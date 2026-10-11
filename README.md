@@ -1,29 +1,29 @@
 # VAARChatbot
 
-Chatbot documental desenvolvido para o **Projeto Integrador PI-5** utilizando arquitetura **RAG (Retrieval-Augmented Generation)**.
+A document-based chatbot developed for the **PI-5 Integrative Project**, using a **RAG (Retrieval-Augmented Generation)** architecture.
 
-O sistema recupera informações da documentação armazenada no projeto e utiliza os trechos encontrados como contexto para gerar respostas fundamentadas nas fontes disponíveis.
+The system retrieves information from documents stored in the project and uses the retrieved passages as context to generate answers grounded in the available sources.
 
-A versão atual está especializada principalmente no fluxo educacional do Rio Grande do Sul:
+The current version primarily focuses on the education-related framework of Rio Grande do Sul, Brazil:
 
 ```text
-SAERS → IMERS → PRE → IPM → distribuição do ICMS municipal
+SAERS → IMERS → PRE → IPM → distribution of municipal ICMS revenue
 ```
 
-A base documental pode ser alterada ou ampliada pela pasta `raw/`, sem necessidade de treinar novamente o modelo de linguagem.
+The document collection can be modified or expanded through the `raw/` folder without retraining the language model.
 
 ---
 
-# Arquitetura
+# Architecture
 
-O fluxo principal da aplicação é:
+The application's main workflow is:
 
 ```text
-Documentos em raw/
+Documents in raw/
         ↓
 src/ingestion.py
         ↓
-Extração e limpeza do texto
+Text extraction and cleaning
         ↓
 Chunking
         ↓
@@ -31,64 +31,64 @@ Embeddings
         ↓
 ChromaDB
         ↓
-Pergunta do usuário
+User question
         ↓
-Busca semântica
+Semantic search
         ↓
-Recuperação de candidatos
+Candidate retrieval
         ↓
-Reranking e deduplicação
+Reranking and deduplication
         ↓
-Construção do contexto
+Context construction
         ↓
 LLM via OpenRouter
         ↓
-Resposta + fontes
+Answer + sources
         ↓
 Streamlit
 ```
 
-O modelo de linguagem **não é treinado novamente com os documentos**.
+The language model is **not retrained on the documents**.
 
-Os documentos são transformados em representações vetoriais e armazenados no ChromaDB. Quando o usuário realiza uma pergunta, o sistema procura os trechos semanticamente mais relacionados e envia somente o contexto recuperado ao modelo de linguagem.
-
----
-
-# Base documental atual
-
-A versão atual do projeto foi otimizada para trabalhar principalmente com informações relacionadas a:
-
-- **SAERS** — Sistema de Avaliação do Rendimento Escolar do Rio Grande do Sul;
-- **IMERS** — Índice Municipal da Qualidade da Educação do Rio Grande do Sul;
-- **PRE** — Participação no Rateio da Cota-Parte da Educação;
-- **Porte municipal**;
-- **IPM** — Índice de Participação dos Municípios;
-- relação entre educação e distribuição do **ICMS municipal**.
-
-O projeto originalmente também trabalhou com documentos relacionados a **Fundeb e VAAR**, mas o chatbot somente consegue responder adequadamente sobre esses temas quando os respectivos documentos estão presentes e indexados na pasta `raw/`.
+Instead, documents are converted into vector representations and stored in ChromaDB. When a user asks a question, the system searches for the most semantically relevant passages and sends only the retrieved context to the language model.
 
 ---
 
-# Tecnologias utilizadas
+# Current Document Collection
 
-O projeto utiliza:
+The current version of the project has been optimized primarily for information related to:
 
-- **Python** — linguagem principal;
-- **Streamlit** — interface web;
-- **ChromaDB** — banco vetorial;
-- **Sentence Transformers** — geração de embeddings;
-- **LangChain / cliente OpenAI** — integração com o modelo;
-- **OpenRouter** — acesso ao LLM;
-- **PyPDF** — extração de texto de arquivos PDF;
-- **python-dotenv** — leitura das variáveis de ambiente.
+- **SAERS** — Rio Grande do Sul School Performance Assessment System (*Sistema de Avaliação do Rendimento Escolar do Rio Grande do Sul*);
+- **IMERS** — Rio Grande do Sul Municipal Education Quality Index (*Índice Municipal da Qualidade da Educação do Rio Grande do Sul*);
+- **PRE** — Education Share of Municipal Revenue Allocation (*Participação no Rateio da Cota-Parte da Educação*);
+- **Municipality size classification**;
+- **IPM** — Municipal Participation Index (*Índice de Participação dos Municípios*);
+- the relationship between education and the distribution of **municipal ICMS tax revenue**.
 
-Modelo de linguagem configurado:
+The project originally also used documents related to **Fundeb and VAAR**. However, the chatbot can only answer questions on those topics reliably when the relevant documents are present in the `raw/` folder and have been indexed.
+
+---
+
+# Technologies Used
+
+The project uses:
+
+- **Python** — main programming language;
+- **Streamlit** — web interface;
+- **ChromaDB** — vector database;
+- **Sentence Transformers** — embedding generation;
+- **LangChain / OpenAI client** — language model integration;
+- **OpenRouter** — LLM access;
+- **PyPDF** — text extraction from PDF files;
+- **python-dotenv** — environment variable management.
+
+Configured language model:
 
 ```text
 z-ai/glm-5.2:free
 ```
 
-Modelo de embeddings:
+Embedding model:
 
 ```text
 sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
@@ -96,9 +96,9 @@ sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 
 ---
 
-# Configuração atual do RAG
+# Current RAG Configuration
 
-A configuração atual utiliza:
+The current configuration uses:
 
 ```text
 CHUNK_SIZE = 900
@@ -113,35 +113,35 @@ INDEX_BATCH_SIZE = 48
 
 ## CHUNK_SIZE
 
-Define aproximadamente o tamanho máximo dos trechos criados durante a indexação.
+Approximately defines the maximum size of text segments created during indexing.
 
 ```text
-900 caracteres
+900 characters
 ```
 
 ## CHUNK_OVERLAP
 
-Define a quantidade de conteúdo compartilhado entre chunks consecutivos.
+Defines how much content is shared between consecutive chunks.
 
 ```text
-180 caracteres
+180 characters
 ```
 
-O overlap ajuda a evitar perda de contexto quando uma informação aparece exatamente na divisão entre dois chunks.
+The overlap helps prevent context loss when important information falls directly on a chunk boundary.
 
 ## CANDIDATE_K
 
-Quantidade de candidatos recuperados inicialmente:
+Number of candidates retrieved initially:
 
 ```text
 28
 ```
 
-O sistema busca mais documentos do que realmente serão utilizados para permitir uma segunda etapa de seleção.
+The system retrieves more passages than it will eventually use, allowing a second selection stage.
 
 ## TOP_K
 
-Quantidade alvo de trechos após a recuperação e o reranking:
+Target number of passages after retrieval and reranking:
 
 ```text
 12
@@ -149,7 +149,7 @@ Quantidade alvo de trechos após a recuperação e o reranking:
 
 ## MAX_CONTEXT_CHUNKS
 
-Limite máximo de trechos utilizados na construção do contexto:
+Maximum number of passages included when building the context:
 
 ```text
 14
@@ -157,52 +157,52 @@ Limite máximo de trechos utilizados na construção do contexto:
 
 ---
 
-# Recuperação e reranking
+# Retrieval and Reranking
 
-O sistema não utiliza apenas a primeira resposta do ChromaDB.
+The system does not simply use the first results returned by ChromaDB.
 
-Depois da busca vetorial, os resultados passam por etapas adicionais de seleção.
+After vector search, the retrieved results go through additional selection stages.
 
-O sistema considera:
+The system considers:
 
-- distância semântica;
-- palavras da pergunta presentes no trecho;
-- relevância da fonte;
-- nome do documento;
-- deduplicação;
-- diversidade entre fontes.
+- semantic distance;
+- query terms found in each passage;
+- source relevance;
+- document name;
+- deduplication;
+- diversity across sources.
 
-Fluxo:
+Workflow:
 
 ```text
-Pergunta
+Question
    ↓
-Busca ampliada
+Expanded search
    ↓
-28 candidatos
+28 candidates
    ↓
 Reranking
    ↓
-Deduplicação
+Deduplication
    ↓
-Diversificação
+Diversification
    ↓
-Melhores trechos
+Best passages
    ↓
-Contexto
+Context
 ```
 
-Essa estratégia reduz a chance de vários chunks quase iguais dominarem o contexto enviado ao modelo.
+This approach reduces the likelihood of nearly identical chunks dominating the context sent to the language model.
 
 ---
 
-# Estrutura do projeto
+# Project Structure
 
 ```text
 VAARChatbot/
 │
 ├── raw/
-│   └── documentos utilizados pelo RAG
+│   └── documents used by the RAG system
 │
 ├── src/
 │   ├── __init__.py
@@ -219,39 +219,39 @@ VAARChatbot/
 
 ---
 
-# Principais arquivos
+# Main Files
 
 ## `app.py`
 
-Responsável pela interface web utilizando **Streamlit**.
+Provides the web interface using **Streamlit**.
 
-Principais funções:
+Main functions:
 
-- receber perguntas;
-- manter histórico da conversa;
-- chamar o sistema RAG;
-- mostrar a resposta;
-- mostrar os trechos utilizados;
-- mostrar as fontes recuperadas;
-- apresentar informações sobre a base;
-- permitir reconstrução do índice quando necessário.
+- accept user questions;
+- maintain conversation history;
+- call the RAG system;
+- display generated answers;
+- display the passages used;
+- display retrieved sources;
+- present information about the document collection;
+- allow the index to be rebuilt when necessary.
 
 ---
 
 ## `src/ingestion.py`
 
-Responsável pela preparação e indexação da documentação.
+Handles document preparation and indexing.
 
-Fluxo:
+Workflow:
 
 ```text
-Arquivo
+File
   ↓
-Leitura
+Reading
   ↓
-Extração
+Extraction
   ↓
-Limpeza
+Cleaning
   ↓
 Chunking
   ↓
@@ -260,7 +260,7 @@ Embedding
 ChromaDB
 ```
 
-O processo também mantém metadados como:
+The process also stores metadata such as:
 
 ```text
 source
@@ -269,7 +269,7 @@ page
 chunk
 ```
 
-Arquivos CSV podem incluir também informações como:
+CSV files may also include fields such as:
 
 ```text
 row
@@ -282,22 +282,22 @@ codigo_ibge
 
 ## `src/rag.py`
 
-Responsável pela recuperação dos documentos e geração da resposta.
+Handles document retrieval and answer generation.
 
-Fluxo principal:
+Main workflow:
 
 ```text
-Pergunta
+Question
    ↓
 retrieve()
    ↓
-Busca semântica
+Semantic search
    ↓
-Expansão da consulta
+Query expansion
    ↓
 Reranking
    ↓
-Deduplicação
+Deduplication
    ↓
 build_context()
    ↓
@@ -305,26 +305,24 @@ OpenRouter
    ↓
 LLM
    ↓
-Resposta
+Answer
 ```
 
-O modelo recebe:
+The model receives:
 
 ```text
-Pergunta
+Question
 +
-Trechos recuperados
+Retrieved passages
 ```
 
-e gera a resposta utilizando o contexto fornecido.
+It then generates an answer using the provided context.
 
 ---
 
 ## `src/settings.py`
 
-Centraliza as configurações do projeto.
-
-Entre elas:
+Centralizes the project's configuration, including:
 
 ```text
 RAW_DIR
@@ -342,9 +340,9 @@ INDEX_VERSION
 
 ---
 
-# Formatos de documentos
+# Supported Document Formats
 
-A versão atual do processo de ingestão trabalha principalmente com:
+The current ingestion process primarily supports:
 
 ```text
 .pdf
@@ -352,40 +350,40 @@ A versão atual do processo de ingestão trabalha principalmente com:
 .csv
 ```
 
-Os documentos devem ser colocados em:
+Documents should be placed in:
 
 ```text
 raw/
 ```
 
-> Arquivos Markdown (`.md`) somente serão indexados caso o `ingestion.py` seja configurado para aceitar essa extensão.
+> Markdown files (`.md`) will only be indexed if `ingestion.py` is configured to accept this extension.
 
 ---
 
-# Como executar o projeto
+# How to Run the Project
 
-## 1. Requisitos
+## 1. Requirements
 
-Para executar localmente é necessário:
+To run the project locally, you will need:
 
-- Python 3.11 ou superior;
+- Python 3.11 or later;
 - Git;
-- conexão com a internet;
-- chave de API da OpenRouter.
+- an internet connection;
+- an OpenRouter API key.
 
 ---
 
-# 2. Clonar o repositório
+# 2. Clone the Repository
 
-Abra o CMD, PowerShell ou terminal do Visual Studio Code.
+Open Command Prompt, PowerShell, or the Visual Studio Code terminal.
 
-Execute:
+Run:
 
 ```bash
 git clone https://github.com/projects-yuri/VAARChatbot.git
 ```
 
-Entre na pasta:
+Navigate to the project directory:
 
 ```bash
 cd VAARChatbot
@@ -393,9 +391,9 @@ cd VAARChatbot
 
 ---
 
-# 3. Criar o ambiente virtual
+# 3. Create a Virtual Environment
 
-Execute:
+Run:
 
 ```bash
 python -m venv .venv
@@ -419,23 +417,23 @@ python -m venv .venv
 source .venv/bin/activate
 ```
 
-Quando ativado corretamente, deverá aparecer algo semelhante a:
+When activated successfully, your terminal should display something similar to:
 
 ```text
-(.venv) C:\Users\usuario\VAARChatbot>
+(.venv) C:\Users\username\VAARChatbot>
 ```
 
 ---
 
-# 4. Instalar as dependências
+# 4. Install Dependencies
 
-Execute:
+Run:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-As bibliotecas necessárias estão listadas no arquivo:
+The required libraries are listed in:
 
 ```text
 requirements.txt
@@ -443,18 +441,18 @@ requirements.txt
 
 ---
 
-# 5. Configurar a OpenRouter
+# 5. Configure OpenRouter
 
-Na raiz do projeto, crie:
+Create a file in the project root named:
 
 ```text
 .env
 ```
 
-Exemplo:
+Example:
 
 ```env
-OPENROUTER_API_KEY=SUA_CHAVE_OPENROUTER
+OPENROUTER_API_KEY=YOUR_OPENROUTER_API_KEY
 
 OPENROUTER_MODEL=z-ai/glm-5.2:free
 
@@ -472,55 +470,55 @@ MAX_CONTEXT_CHUNKS=14
 INDEX_BATCH_SIZE=48
 ```
 
-Substitua:
+Replace:
 
 ```text
-SUA_CHAVE_OPENROUTER
+YOUR_OPENROUTER_API_KEY
 ```
 
-pela sua chave.
+with your actual API key.
 
-> **Nunca publique sua chave da OpenRouter no GitHub.**
+> **Never publish your OpenRouter API key on GitHub.**
 
-O arquivo:
+The file:
 
 ```text
 .env
 ```
 
-deve permanecer no `.gitignore`.
+must remain in `.gitignore`.
 
 ---
 
-# 6. Banco vetorial
+# 6. Vector Database
 
-O projeto utiliza:
+The project uses:
 
 ```text
 ChromaDB
 ```
 
-A versão atual permite configurar o diretório através da variável:
+The current version allows you to configure the database directory using:
 
 ```text
 CHROMA_DIR
 ```
 
-Por padrão, o `settings.py` utiliza um diretório temporário compatível com o ambiente do Streamlit Cloud.
+By default, `settings.py` uses a temporary directory compatible with Streamlit Cloud.
 
-Essa alteração foi feita para evitar erros do SQLite como:
+This change was introduced to avoid SQLite errors such as:
 
 ```text
 attempt to write a readonly database
 ```
 
-e:
+and:
 
 ```text
 no such table: tenants
 ```
 
-Caso seja necessário definir manualmente um diretório local, pode ser utilizada uma variável como:
+If you need to specify a local directory manually, you can use an environment variable such as:
 
 ```env
 CHROMA_DIR=data/chroma
@@ -528,15 +526,15 @@ CHROMA_DIR=data/chroma
 
 ---
 
-# 7. Adicionar os documentos
+# 7. Add Documents
 
-Coloque os arquivos que deseja utilizar dentro de:
+Place the documents you want to use inside:
 
 ```text
 raw/
 ```
 
-Exemplo:
+Example:
 
 ```text
 raw/
@@ -544,65 +542,65 @@ raw/
 └── outros_documentos.pdf
 ```
 
-A pasta `raw/` é a base de conhecimento efetiva do chatbot.
+The `raw/` folder is the chatbot's actual knowledge base.
 
-Se um documento não estiver nessa pasta, ele não será utilizado pelo processo normal de indexação.
+If a document is not in this folder, it will not be included in the standard indexing process.
 
 ---
 
-# 8. Criar o índice
+# 8. Build the Index
 
-Antes da primeira utilização, execute:
+Before using the chatbot for the first time, run:
 
 ```bash
 python -m src.ingestion --reset
 ```
 
-Esse processo:
+This process:
 
-1. verifica os documentos;
-2. extrai o texto;
-3. limpa o conteúdo;
-4. cria os chunks;
-5. gera os embeddings;
-6. cria ou abre o ChromaDB;
-7. grava os vetores;
-8. armazena os metadados;
-9. registra o estado do índice.
+1. checks the documents;
+2. extracts the text;
+3. cleans the content;
+4. creates the chunks;
+5. generates the embeddings;
+6. creates or opens ChromaDB;
+7. stores the vectors;
+8. stores the metadata;
+9. records the index state.
 
 ---
 
-# 9. Executar o chatbot
+# 9. Run the Chatbot
 
-Após criar o índice:
+After building the index, run:
 
 ```bash
 streamlit run app.py
 ```
 
-Normalmente a aplicação será aberta em:
+The application will normally be available at:
 
 ```text
 http://localhost:8501
 ```
 
-Caso o navegador não abra automaticamente, copie o endereço e acesse manualmente.
+If your browser does not open automatically, copy the URL and open it manually.
 
 ---
 
 # Streamlit Cloud
 
-Para realizar deploy no Streamlit Cloud, as informações privadas devem ser adicionadas em:
+When deploying to Streamlit Cloud, private configuration values should be added under:
 
 ```text
 Settings
 → Secrets
 ```
 
-Exemplo:
+Example:
 
 ```toml
-OPENROUTER_API_KEY = "SUA_CHAVE"
+OPENROUTER_API_KEY = "YOUR_API_KEY"
 
 OPENROUTER_MODEL = "z-ai/glm-5.2:free"
 
@@ -620,82 +618,82 @@ MAX_CONTEXT_CHUNKS = 14
 INDEX_BATCH_SIZE = 48
 ```
 
-A chave da OpenRouter não deve ser colocada diretamente no código ou enviada ao GitHub.
+Do not place your OpenRouter API key directly in your source code or upload it to GitHub.
 
 ---
 
-# Como uma pergunta é processada
+# How a Question Is Processed
 
-Exemplo:
+Example:
 
 ```text
-Como o porte do município influencia a PRE?
+How does municipality size classification affect PRE?
 ```
 
-O sistema executa aproximadamente:
+The system roughly follows these steps:
 
 ```text
-Pergunta
+Question
    ↓
-Embedding / busca semântica
+Embedding / semantic search
    ↓
-Consultas auxiliares
+Auxiliary queries
    ↓
 ChromaDB
    ↓
-28 candidatos
+28 candidates
    ↓
 Reranking
    ↓
-Deduplicação
+Deduplication
    ↓
-Diversificação
+Diversification
    ↓
-Construção do contexto
+Context construction
    ↓
 OpenRouter
    ↓
 GLM
    ↓
-Resposta
+Answer
    ↓
-Fontes
+Sources
 ```
 
 ---
 
-# Controle contra alucinações
+# Hallucination Mitigation
 
-O chatbot foi configurado para priorizar respostas baseadas nos documentos recuperados.
+The chatbot is configured to prioritize answers grounded in the retrieved documents.
 
-O modelo deve:
+The model should:
 
-- responder utilizando o contexto recuperado;
-- evitar inventar leis;
-- evitar inventar percentuais;
-- evitar inventar fórmulas;
-- evitar inventar municípios ou valores;
-- não transformar um exemplo específico em regra geral;
-- informar quando a documentação não contém informações suficientes.
+- answer using the retrieved context;
+- avoid inventing laws;
+- avoid inventing percentages;
+- avoid inventing formulas;
+- avoid inventing municipalities or numerical values;
+- avoid treating a specific example as a general rule;
+- indicate when the documentation does not contain sufficient information.
 
-A ideia principal é:
+The core idea is:
 
 ```text
-O ChromaDB encontra.
-O Sentence Transformer representa semanticamente.
-O LLM explica.
+ChromaDB finds relevant passages.
+Sentence Transformers provide semantic representations.
+The LLM explains the findings.
 ```
 
 ---
 
-# Diferença entre os principais conceitos
+# Key Concepts Explained
 
 ## Chunking
 
-Divide documentos grandes em partes menores.
+Splits large documents into smaller segments.
 
 ```text
-Documento
+Document
 ↓
 Chunk 1
 Chunk 2
@@ -704,71 +702,71 @@ Chunk 3
 
 ---
 
-## Tokenização
+## Tokenization
 
-Divide o texto em unidades que podem ser processadas pelo modelo de linguagem.
+Splits text into units that can be processed by the language model.
 
 ---
 
 ## Embedding
 
-Transforma um trecho de texto em uma representação numérica que captura características semânticas.
+Converts a text passage into a numerical representation that captures semantic characteristics.
 
 ```text
-Texto
+Text
 ↓
-Vetor
+Vector
 ```
 
 ---
 
 ## ChromaDB
 
-Armazena os vetores e permite localizar trechos semanticamente semelhantes à pergunta.
+Stores vectors and makes it possible to retrieve passages that are semantically similar to the user's question.
 
 ---
 
 ## Reranking
 
-Reorganiza os resultados recuperados para priorizar os trechos mais úteis antes de montar o contexto.
+Reorders retrieved results to prioritize the most useful passages before constructing the context.
 
 ---
 
 ## RAG
 
-Combina:
+Combines:
 
 ```text
-Recuperação de informação
+Information retrieval
 +
-Modelo de linguagem
+Language model
 ```
 
-Fluxo simplificado:
+Simplified workflow:
 
 ```text
-Pergunta
+Question
 ↓
-Busca documental
+Document search
 ↓
-Contexto
+Context
 ↓
 LLM
 ↓
-Resposta
+Answer
 ```
 
 ---
 
-# Atualizar a base documental
+# Updating the Document Collection
 
-Caso os documentos da pasta `raw/` sejam modificados, execute novamente:
+If documents in the `raw/` folder are modified, run:
 
 ```bash
 python -m src.ingestion --reset
 ```
 
-Depois:
+Then:
 
 ```bash
 streamlit run app.py
@@ -776,45 +774,35 @@ streamlit run app.py
 
 ---
 
-# Problemas comuns
+# Common Issues
 
 ## `429`
 
-Exemplo:
+Example:
 
 ```text
 429 Too Many Requests
 ```
 
-Esse erro normalmente está relacionado aos limites do modelo gratuito utilizado através da OpenRouter.
+This error is usually related to the rate limits of the free model accessed through OpenRouter.
 
-Não significa necessariamente que o código do RAG esteja incorreto.
+It does not necessarily indicate a problem with the RAG implementation.
 
 ---
 
 ## `attempt to write a readonly database`
 
-Erro relacionado ao SQLite utilizado pelo ChromaDB quando o diretório não possui permissões de escrita adequadas.
+This error is related to the SQLite database used by ChromaDB when the directory lacks the appropriate write permissions.
 
-A versão atual utiliza uma estratégia de diretório temporário para reduzir esse problema no Streamlit Cloud.
+The current version uses a temporary-directory strategy to reduce this issue on Streamlit Cloud.
 
 ---
 
 ## `no such table: tenants`
 
-Pode ocorrer quando existe um banco Chroma antigo ou incompatível com a versão atual.
+This may occur if an old or incompatible Chroma database exists.
 
-Uma solução é reconstruir o índice:
-
-```bash
-python -m src.ingestion --reset
-```
-
----
-
-## Índice inexistente
-
-Caso o sistema informe que o índice não existe ou precisa ser reconstruído:
+One solution is to rebuild the index:
 
 ```bash
 python -m src.ingestion --reset
@@ -822,7 +810,17 @@ python -m src.ingestion --reset
 
 ---
 
-# Execução rápida
+## Missing Index
+
+If the system reports that the index does not exist or must be rebuilt, run:
+
+```bash
+python -m src.ingestion --reset
+```
+
+---
+
+# Quick Start
 
 ```bash
 git clone https://github.com/projects-yuri/VAARChatbot.git
@@ -838,7 +836,7 @@ Windows CMD:
 .venv\Scripts\activate
 ```
 
-Instale as dependências:
+Install the dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -850,19 +848,19 @@ Configure:
 .env
 ```
 
-Depois:
+Then:
 
 ```bash
 python -m src.ingestion --reset
 ```
 
-E execute:
+And run:
 
 ```bash
 streamlit run app.py
 ```
 
-Abra:
+Open:
 
 ```text
 http://localhost:8501
@@ -870,14 +868,14 @@ http://localhost:8501
 
 ---
 
-# Resumo da arquitetura
+# Architecture Summary
 
 ```text
 raw/
  ↓
 ingestion.py
  ↓
-Limpeza
+Cleaning
  ↓
 Chunking (900 / 180)
  ↓
@@ -887,13 +885,13 @@ Embeddings
  ↓
 ChromaDB
  ↓
-28 candidatos
+28 candidates
  ↓
 Reranking
  ↓
 TOP_K = 12
  ↓
-Contexto
+Context
  ↓
 OpenRouter
  ↓
@@ -903,17 +901,17 @@ app.py
  ↓
 Streamlit
  ↓
-Usuário
+User
 ```
 
 ---
 
-# Projeto
+# Project
 
-**Projeto Integrador PI-5**
+**PI-5 Integrative Project**
 
-Chatbot documental com arquitetura RAG aplicado à documentação educacional do Rio Grande do Sul.
+A document-based chatbot powered by RAG, designed to work with educational documentation from Rio Grande do Sul, Brazil.
 
-Repositório:
+Repository:
 
 https://github.com/projects-yuri/VAARChatbot
