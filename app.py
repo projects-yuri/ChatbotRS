@@ -27,7 +27,7 @@ except Exception:
 
 
 # =========================================================
-# IMPORTS DO PROJETO
+# PROJECT IMPORTS
 # =========================================================
 
 from src.ingestion import index_documents
@@ -44,11 +44,11 @@ from src.settings import (
 
 
 # =========================================================
-# CONFIGURAÇÃO DA PÁGINA
+# PAGE CONFIGURATION
 # =========================================================
 
 st.set_page_config(
-    page_title="Chatbot Educacional RS",
+    page_title="RS Educational Chatbot",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -56,14 +56,14 @@ st.set_page_config(
 
 
 # =========================================================
-# ESTILO
+# STYLING
 # =========================================================
 
 st.markdown(
     """
     <style>
 
-    /* Fundo geral */
+    /* Overall background */
     .stApp {
         background:
             linear-gradient(
@@ -74,7 +74,7 @@ st.markdown(
             );
     }
 
-    /* Limite de largura */
+    /* Content width */
     .block-container {
         max-width: 1180px;
         padding-top: 2rem;
@@ -91,7 +91,7 @@ st.markdown(
         padding-top: 1.2rem;
     }
 
-    /* Título principal */
+    /* Main heading */
     .main-title {
         font-size: 2.3rem;
         font-weight: 800;
@@ -127,7 +127,7 @@ st.markdown(
         line-height: 1.5;
     }
 
-    /* Documento */
+    /* Document */
     .doc-card {
         background: rgba(255,255,255,0.035);
         border: 1px solid rgba(255,255,255,0.07);
@@ -149,7 +149,7 @@ st.markdown(
         margin-top: 3px;
     }
 
-    /* Badge online */
+    /* Online status badge */
     .status-online {
         display: inline-block;
         padding: 5px 10px;
@@ -175,7 +175,7 @@ st.markdown(
         background: rgba(255,255,255,0.025);
     }
 
-    /* Métricas */
+    /* Metrics */
     [data-testid="stMetric"] {
         background: rgba(255,255,255,0.035);
         border: 1px solid rgba(255,255,255,0.07);
@@ -183,7 +183,7 @@ st.markdown(
         border-radius: 12px;
     }
 
-    /* Botões */
+    /* Buttons */
     .stButton > button {
         border-radius: 9px;
         font-weight: 600;
@@ -196,13 +196,13 @@ st.markdown(
 
 
 # =========================================================
-# FUNÇÕES AUXILIARES
+# HELPER FUNCTIONS
 # =========================================================
 
 def get_available_documents() -> list[Path]:
     """
-    Lista automaticamente os documentos presentes
-    na pasta raw/.
+    Automatically lists documents available
+    in the raw/ directory.
     """
 
     if not RAW_DIR.exists():
@@ -257,41 +257,41 @@ def document_description(
 
     if "saers" in name:
         return (
-            "Avaliação educacional e desempenho "
-            "da educação no Rio Grande do Sul."
+            "Educational assessment and academic "
+            "performance in Rio Grande do Sul."
         )
 
     if "imers" in name:
         return (
-            "Índice Municipal da Qualidade "
-            "da Educação do Rio Grande do Sul."
+            "Municipal Education Quality Index "
+            "of Rio Grande do Sul."
         )
 
     if "pre" in name:
         return (
-            "Participação no Rateio da "
-            "Cota-Parte da Educação."
+            "Participation in the Allocation of "
+            "the Education Revenue Share (PRE)."
         )
 
     if "icms" in name:
         return (
-            "Legislação e regras relacionadas "
-            "ao ICMS Educacional."
+            "Legislation and regulations related "
+            "to education-based ICMS revenue allocation."
         )
 
     if "fundeb" in name:
         return (
-            "Documentação relacionada ao "
+            "Documentation related to "
             "Fundeb."
         )
 
     if "vaar" in name:
         return (
-            "Documentação relacionada à "
-            "complementação VAAR."
+            "Documentation related to "
+            "the VAAR funding supplement."
         )
 
-    return "Documento disponível para consulta."
+    return "Document available for consultation."
 
 
 def source_label(
@@ -300,7 +300,7 @@ def source_label(
 
     source = item.get(
         "source",
-        "Documento",
+        "Document",
     )
 
     doc_type = item.get(
@@ -316,12 +316,12 @@ def source_label(
 
         if entity:
             details.append(
-                f"município: {entity}"
+                f"municipality: {entity}"
             )
 
         if row:
             details.append(
-                f"linha {row}"
+                f"row {row}"
             )
 
         if details:
@@ -337,14 +337,14 @@ def source_label(
 
         if page:
             return (
-                f"{source} — página {page}"
+                f"{source} — page {page}"
             )
 
     return source
 
 
 # =========================================================
-# DOCUMENTOS
+# DOCUMENTS
 # =========================================================
 
 available_documents = (
@@ -353,7 +353,7 @@ available_documents = (
 
 
 # =========================================================
-# INDEXAÇÃO
+# INDEXING
 # =========================================================
 
 @st.cache_resource(
@@ -367,14 +367,14 @@ def ensure_index():
 
 try:
     with st.spinner(
-        "Preparando base documental..."
+        "Preparing the document knowledge base..."
     ):
         indexed_chunks = ensure_index()
 
 except Exception as error:
     st.error(
-        "Não foi possível preparar "
-        "a base documental."
+        "Could not initialize "
+        "the document knowledge base."
     )
 
     st.code(
@@ -385,19 +385,19 @@ except Exception as error:
 
 
 # =========================================================
-# CABEÇALHO
+# HEADER
 # =========================================================
 
 st.markdown(
     """
     <div class="main-title">
-        📚 Chatbot Educacional RS
+        📚 RS Educational Chatbot
     </div>
 
     <div class="main-subtitle">
-        Consulta inteligente à documentação sobre
-        SAERS, IMERS, PRE e ICMS Educacional
-        do Rio Grande do Sul.
+        AI-assisted document search covering
+        SAERS, IMERS, PRE, and education-based ICMS
+        in Rio Grande do Sul, Brazil.
     </div>
     """,
     unsafe_allow_html=True,
@@ -405,27 +405,27 @@ st.markdown(
 
 
 # =========================================================
-# MÉTRICAS PRINCIPAIS
+# MAIN METRICS
 # =========================================================
 
 metric1, metric2, metric3 = st.columns(3)
 
 with metric1:
     st.metric(
-        "📚 Documentos",
+        "📚 Documents",
         len(available_documents),
     )
 
 with metric2:
     st.metric(
-        "🧩 Chunks indexados",
+        "🧩 Indexed chunks",
         indexed_chunks,
     )
 
 with metric3:
     model_name = os.getenv(
         "OPENROUTER_MODEL",
-        "Modelo não informado",
+        "Model not specified",
     )
 
     short_model = (
@@ -436,39 +436,39 @@ with metric3:
     )
 
     st.metric(
-        "🤖 Modelo",
+        "🤖 Model",
         short_model,
     )
 
 
 # =========================================================
-# INFORMAÇÕES
+# INFORMATION
 # =========================================================
 
 with st.expander(
-    "ℹ️ Sobre este chatbot"
+    "ℹ️ About this chatbot"
 ):
     st.markdown(
         """
-        Este chatbot utiliza **RAG
+        This chatbot uses **RAG
         (Retrieval-Augmented Generation)**.
 
-        Quando uma pergunta é realizada:
+        When you ask a question:
 
-        **1.** A pergunta é analisada pelo sistema.
+        **1.** The system processes your question.
 
-        **2.** Os trechos mais relevantes da
-        documentação são recuperados.
+        **2.** It retrieves the most relevant passages
+        from the available documents.
 
-        **3.** Esses trechos são enviados ao
-        modelo de linguagem.
+        **3.** The retrieved passages are provided
+        to the language model as context.
 
-        **4.** A resposta é construída utilizando
-        a documentação recuperada como contexto.
+        **4.** The model generates an answer grounded
+        in that retrieved context.
 
-        O objetivo é reduzir respostas inventadas
-        e permitir que as informações possam ser
-        verificadas diretamente nos documentos.
+        This approach aims to reduce unsupported
+        answers and lets you verify information
+        against the original documents.
         """
     )
 
@@ -484,7 +484,7 @@ with st.sidebar:
         <h2 style="
             margin-bottom:4px;
         ">
-            📚 Base documental
+            📚 Document library
         </h2>
         """,
         unsafe_allow_html=True,
@@ -493,21 +493,21 @@ with st.sidebar:
     st.markdown(
         """
         <span class="status-online">
-            ● Base carregada
+            ● Knowledge base ready
         </span>
         """,
         unsafe_allow_html=True,
     )
 
     st.caption(
-        "Documentos atualmente disponíveis "
-        "para o chatbot."
+        "Documents currently available "
+        "to the chatbot."
     )
 
     st.divider()
 
     # =====================================================
-    # DOCUMENTOS DISPONÍVEIS
+    # AVAILABLE DOCUMENTS
     # =====================================================
 
     if available_documents:
@@ -541,18 +541,18 @@ with st.sidebar:
 
     else:
         st.warning(
-            "Nenhum documento encontrado "
-            "na pasta raw/."
+            "No documents found "
+            "in the raw/ directory."
         )
 
     st.divider()
 
     # =====================================================
-    # COBERTURA
+    # COVERAGE
     # =====================================================
 
     st.subheader(
-        "🎯 Assuntos disponíveis"
+        "🎯 Topics covered"
     )
 
     st.markdown(
@@ -560,9 +560,9 @@ with st.sidebar:
         - **SAERS**
         - **IMERS**
         - **PRE**
-        - **ICMS Educacional**
-        - Indicadores educacionais
-        - Porte dos municípios
+        - **Education-based ICMS**
+        - Educational indicators
+        - Municipal population size
         - IPM
         """
     )
@@ -570,11 +570,11 @@ with st.sidebar:
     st.divider()
 
     # =====================================================
-    # CONFIGURAÇÃO RAG
+    # RAG CONFIGURATION
     # =====================================================
 
     with st.expander(
-        "⚙️ Configuração do RAG"
+        "⚙️ RAG configuration"
     ):
 
         st.write(
@@ -587,24 +587,24 @@ with st.sidebar:
         )
 
         st.write(
-            f"**Candidatos:** "
+            f"**Candidates:** "
             f"`{CANDIDATE_K}`"
         )
 
         st.write(
-            f"**Máximo de contexto:** "
+            f"**Maximum context chunks:** "
             f"`{MAX_CONTEXT_CHUNKS}`"
         )
 
         st.write(
-            f"**Chunks indexados:** "
+            f"**Indexed chunks:** "
             f"`{indexed_chunks}`"
         )
 
     st.divider()
 
     if st.button(
-        "🧹 Limpar conversa",
+        "🧹 Clear conversation",
         use_container_width=True,
     ):
 
@@ -615,17 +615,17 @@ with st.sidebar:
     st.divider()
 
     st.caption(
-        "PI-5 • RAG educacional • "
+        "PI-5 • Educational RAG • "
         "Rio Grande do Sul"
     )
 
 
 # =========================================================
-# PERGUNTAS SUGERIDAS
+# SUGGESTED QUESTIONS
 # =========================================================
 
 st.markdown(
-    "### 💡 Exemplos de perguntas"
+    "### 💡 Example questions"
 )
 
 example1, example2, example3 = (
@@ -634,20 +634,20 @@ example1, example2, example3 = (
 
 with example1:
     st.info(
-        "O que é o SAERS e qual "
-        "é sua finalidade?"
+        "What is SAERS and what "
+        "is its purpose?"
     )
 
 with example2:
     st.info(
-        "Como o porte do município "
-        "influencia a PRE?"
+        "How does municipal population "
+        "size affect PRE?"
     )
 
 with example3:
     st.info(
-        "Qual é a relação entre "
-        "IMERS e PRE?"
+        "What is the relationship between "
+        "IMERS and PRE?"
     )
 
 
@@ -655,7 +655,7 @@ st.divider()
 
 
 # =========================================================
-# HISTÓRICO
+# CHAT HISTORY
 # =========================================================
 
 if "messages" not in st.session_state:
@@ -679,7 +679,7 @@ for message in st.session_state.messages:
         ):
 
             with st.expander(
-                f"📄 Fontes consultadas "
+                f"📄 Sources consulted "
                 f"({len(message['sources'])})"
             ):
 
@@ -706,13 +706,13 @@ for message in st.session_state.messages:
 # =========================================================
 
 question = st.chat_input(
-    "Pergunte sobre SAERS, IMERS, "
-    "PRE ou ICMS Educacional..."
+    "Ask about SAERS, IMERS, "
+    "PRE, or education-based ICMS..."
 )
 
 
 # =========================================================
-# RESPOSTA
+# ANSWER
 # =========================================================
 
 if question:
@@ -738,7 +738,7 @@ if question:
         try:
 
             with st.spinner(
-                "Consultando a documentação..."
+                "Searching the documents..."
             ):
 
                 response, sources = answer(
@@ -752,7 +752,7 @@ if question:
             if sources:
 
                 with st.expander(
-                    f"📄 Fontes consultadas "
+                    f"📄 Sources consulted "
                     f"({len(sources)})"
                 ):
 
@@ -776,8 +776,8 @@ if question:
         except Exception as error:
 
             response = (
-                "Não foi possível gerar "
-                "a resposta."
+                "Could not generate "
+                "the answer."
             )
 
             sources = []
