@@ -1,4 +1,5 @@
-"""RS Edu â€” a bilingual, customizable interface for the existing RAG project.
+# -*- coding: utf-8 -*-
+"""RS Edu — a bilingual, customizable interface for the existing RAG project.
 
 Replace the project's app.py with this file. Keep src/ and the documents as they
 are. English answers and optional response styles reuse the project's existing
@@ -36,24 +37,24 @@ DEFAULTS = {
 
 COPY = {
     "pt": {
-        "page_title": "RS Edu Â· Converse e descubra",
-        "space": "Seu espaÃ§o",
+        "page_title": "RS Edu · Converse e descubra",
+        "space": "Seu espaço",
         "language": "Idioma / Language",
         "new_chat": "Nova conversa",
-        "appearance": "AparÃªncia",
+        "appearance": "Aparência",
         "mode": "Modo",
         "dark": "Escuro",
         "light": "Claro",
-        "palette": "Cor do seu espaÃ§o",
-        "ocean": "PetrÃ³leo",
+        "palette": "Cor do seu espaço",
+        "ocean": "Petróleo",
         "forest": "Floresta",
         "violet": "Lavanda",
-        "amber": "Ã‚mbar",
+        "amber": "Âmbar",
         "custom": "Minha cor",
         "custom_color": "Escolha uma cor",
         "font_size": "Tamanho do texto",
         "compact": "Visual compacto",
-        "reset": "Restaurar aparÃªncia",
+        "reset": "Restaurar aparência",
         "conversation": "Conversa",
         "name": "Como quer ser chamado?",
         "name_placeholder": "Seu nome, se quiser",
@@ -62,40 +63,40 @@ COPY = {
         "brief": "Curtas e diretas",
         "guided": "Explicadas por etapas",
         "show_sources": "Mostrar fontes nas respostas",
-        "download": "â†“ Baixar conversa",
-        "session_note": "Um espaÃ§o do seu jeito.",
-        "eyebrow": "EDUCAÃ‡ÃƒO DO RIO GRANDE DO SUL",
+        "download": "↓ Baixar conversa",
+        "session_note": "Um espaço do seu jeito.",
+        "eyebrow": "EDUCAÇÃO DO RIO GRANDE DO SUL",
         "hero": "Mais clareza.<br><em>Uma pergunta por vez.</em>",
-        "welcome": "OlÃ¡, {name}.",
-        "subtitle": "Escolha um tÃ³pico ou escreva sua dÃºvida. Vamos conversar sobre os documentos disponÃ­veis.",
+        "welcome": "Olá, {name}.",
+        "subtitle": "Escolha um tópico ou escreva sua dúvida. Vamos conversar sobre os documentos disponíveis.",
         "chat_title": "Vamos continuar a conversa.",
-        "topics": "TÃ³picos disponÃ­veis",
-        "topic_count": "{count} tÃ³picos disponÃ­veis",
-        "topic_count_one": "1 tÃ³pico disponÃ­vel",
-        "explore": "Explore um tÃ³pico",
-        "all_topics": "Todos os tÃ³picos",
+        "topics": "Tópicos disponíveis",
+        "topic_count": "{count} tópicos disponíveis",
+        "topic_count_one": "1 tópico disponível",
+        "explore": "Explore um tópico",
+        "all_topics": "Todos os tópicos",
         "examples": "Comece por uma pergunta",
-        "input": "O que vocÃª gostaria de entender?",
-        "input_topic": "Pergunte sobre {topic}â€¦",
-        "thinking": "Consultando os documentosâ€¦",
-        "preparing": "Preparando seu espaÃ§oâ€¦",
+        "input": "O que você gostaria de entender?",
+        "input_topic": "Pergunte sobre {topic}…",
+        "thinking": "Consultando os documentos…",
+        "preparing": "Preparando seu espaço…",
         "sources": "Ver fontes ({count})",
         "source": "Documento",
-        "page": "pÃ¡gina {value}",
-        "municipality": "municÃ­pio: {value}",
+        "page": "página {value}",
+        "municipality": "município: {value}",
         "original_excerpt": "Trecho original",
-        "no_documents": "Ainda nÃ£o hÃ¡ documentos disponÃ­veis para esta conversa.",
-        "unavailable": "NÃ£o foi possÃ­vel preparar o chatbot. Tente novamente em instantes.",
-        "answer_error": "NÃ£o consegui responder agora. VocÃª pode tentar novamente.",
+        "no_documents": "Ainda não há documentos disponíveis para esta conversa.",
+        "unavailable": "Não foi possível preparar o chatbot. Tente novamente em instantes.",
+        "answer_error": "Não consegui responder agora. Você pode tentar novamente.",
         "retry": "Tentar novamente",
-        "adapt_error": "NÃ£o foi possÃ­vel aplicar o idioma ou estilo escolhido. A resposta original estÃ¡ abaixo.",
-        "you": "VocÃª",
+        "adapt_error": "Não foi possível aplicar o idioma ou estilo escolhido. A resposta original está abaixo.",
+        "you": "Você",
         "assistant": "RS Edu",
-        "document_question": "O que o documento â€œ{name}â€ explica?",
-        "document_summary": "Resuma os principais pontos do documento â€œ{name}â€.",
+        "document_question": "O que o documento “{name}” explica?",
+        "document_summary": "Resuma os principais pontos do documento “{name}”.",
     },
     "en": {
-        "page_title": "RS Edu Â· Ask and discover",
+        "page_title": "RS Edu · Ask and discover",
         "space": "Your space",
         "language": "Idioma / Language",
         "new_chat": "New conversation",
@@ -121,7 +122,7 @@ COPY = {
         "brief": "Short and direct",
         "guided": "Step by step",
         "show_sources": "Show sources with answers",
-        "download": "â†“ Download conversation",
+        "download": "↓ Download conversation",
         "session_note": "A space that feels like you.",
         "eyebrow": "EDUCATION IN RIO GRANDE DO SUL",
         "hero": "More clarity.<br><em>One question at a time.</em>",
@@ -135,9 +136,9 @@ COPY = {
         "all_topics": "All topics",
         "examples": "Start with a question",
         "input": "What would you like to understand?",
-        "input_topic": "Ask about {topic}â€¦",
-        "thinking": "Looking through the documentsâ€¦",
-        "preparing": "Getting your space readyâ€¦",
+        "input_topic": "Ask about {topic}…",
+        "thinking": "Looking through the documents…",
+        "preparing": "Getting your space ready…",
         "sources": "View sources ({count})",
         "source": "Document",
         "page": "page {value}",
@@ -150,8 +151,8 @@ COPY = {
         "adapt_error": "The selected language or style couldn't be applied. The original answer is shown below.",
         "you": "You",
         "assistant": "RS Edu",
-        "document_question": "What does the document â€œ{name}â€ explain?",
-        "document_summary": "Summarize the main points of the document â€œ{name}â€.",
+        "document_question": "What does the document “{name}” explain?",
+        "document_summary": "Summarize the main points of the document “{name}”.",
     },
 }
 
@@ -160,64 +161,64 @@ COPY = {
 TOPICS = [
     {
         "id": "saers", "terms": [r"\bsaers\b"],
-        "pt": ("SAERS", "AvaliaÃ§Ã£o da aprendizagem no RS.",
-               ["O que Ã© o SAERS?", "Quais etapas de ensino sÃ£o avaliadas pelo SAERS?"]),
+        "pt": ("SAERS", "Avaliação da aprendizagem no RS.",
+               ["O que é o SAERS?", "Quais etapas de ensino são avaliadas pelo SAERS?"]),
         "en": ("SAERS", "Learning assessment in Rio Grande do Sul.",
                ["What is SAERS?", "Which school stages does SAERS assess?"]),
     },
     {
         "id": "imers", "terms": [r"\bimers\b"],
-        "pt": ("IMERS", "Qualidade da educaÃ§Ã£o nos municÃ­pios.",
-               ["O que Ã© o IMERS?", "Quais indicadores compÃµem o IMERS?"]),
+        "pt": ("IMERS", "Qualidade da educação nos municípios.",
+               ["O que é o IMERS?", "Quais indicadores compõem o IMERS?"]),
         "en": ("IMERS", "Education quality across municipalities.",
                ["What is IMERS?", "Which indicators make up IMERS?"]),
     },
     {
         "id": "pre", "terms": [r"\bpre\b", r"participacao na receita educacional"],
-        "pt": ("PRE", "ParticipaÃ§Ã£o na receita educacional.",
-               ["O que Ã© a PRE?", "Como a PRE Ã© calculada?"]),
+        "pt": ("PRE", "Participação na receita educacional.",
+               ["O que é a PRE?", "Como a PRE é calculada?"]),
         "en": ("PRE", "Municipal education revenue share.",
                ["What is PRE?", "How is PRE calculated?"]),
     },
     {
         "id": "icms", "terms": [r"\bicms\b"],
-        "pt": ("ICMS Educacional", "EducaÃ§Ã£o e distribuiÃ§Ã£o de recursos.",
-               ["Como funciona o ICMS Educacional no RS?", "Como os recursos do ICMS Educacional sÃ£o distribuÃ­dos entre os municÃ­pios?"]),
+        "pt": ("ICMS Educacional", "Educação e distribuição de recursos.",
+               ["Como funciona o ICMS Educacional no RS?", "Como os recursos do ICMS Educacional são distribuídos entre os municípios?"]),
         "en": ("Education-based ICMS", "Education and revenue allocation.",
                ["How does education-based ICMS work in Rio Grande do Sul?", "How is education-based ICMS revenue distributed across municipalities?"]),
     },
     {
         "id": "fundeb", "terms": [r"\bfundeb\b", r"\b(?:ec|emenda(?: constitucional)?)\s*108\b"],
-        "pt": ("Fundeb", "Financiamento da educaÃ§Ã£o bÃ¡sica.",
-               ["O que Ã© o Fundeb?", "Como os recursos do Fundeb sÃ£o distribuÃ­dos?"]),
+        "pt": ("Fundeb", "Financiamento da educação básica.",
+               ["O que é o Fundeb?", "Como os recursos do Fundeb são distribuídos?"]),
         "en": ("Fundeb", "Funding for basic education.",
                ["What is Fundeb?", "How are Fundeb resources distributed?"]),
     },
     {
         "id": "vaar", "terms": [r"\bvaar\b"],
-        "pt": ("VAAR", "ComplementaÃ§Ã£o de recursos educacionais.",
-               ["O que Ã© a complementaÃ§Ã£o VAAR?", "Quais sÃ£o os critÃ©rios para receber o VAAR?"]),
+        "pt": ("VAAR", "Complementação de recursos educacionais.",
+               ["O que é a complementação VAAR?", "Quais são os critérios para receber o VAAR?"]),
         "en": ("VAAR", "Supplementary education funding.",
                ["What is the VAAR funding supplement?", "What are the criteria for receiving VAAR?"]),
     },
     {
         "id": "ipm", "terms": [r"\bipm\b", r"indice de participacao dos municipios"],
-        "pt": ("IPM", "ParticipaÃ§Ã£o dos municÃ­pios nos recursos.",
-               ["O que Ã© o IPM?", "Como o IPM se relaciona com a educaÃ§Ã£o?"]),
+        "pt": ("IPM", "Participação dos municípios nos recursos.",
+               ["O que é o IPM?", "Como o IPM se relaciona com a educação?"]),
         "en": ("IPM", "Municipal revenue participation.",
                ["What is IPM?", "How is IPM related to education?"]),
     },
     {
         "id": "indicators", "terms": [r"\bindicadores?\b", r"\b(?:iqa|iqi|iqf)\b"],
-        "pt": ("Indicadores educacionais", "Dados para entender a educaÃ§Ã£o.",
-               ["Quais indicadores educacionais aparecem nos documentos?", "Como interpretar os indicadores educacionais disponÃ­veis?"]),
+        "pt": ("Indicadores educacionais", "Dados para entender a educação.",
+               ["Quais indicadores educacionais aparecem nos documentos?", "Como interpretar os indicadores educacionais disponíveis?"]),
         "en": ("Education indicators", "Data for understanding education.",
                ["Which education indicators appear in the documents?", "How should the available education indicators be interpreted?"]),
     },
     {
         "id": "population", "terms": [r"\b(?:populacao|populacional|habitantes)\b"],
-        "pt": ("PopulaÃ§Ã£o municipal", "Dados populacionais dos municÃ­pios.",
-               ["Quais dados populacionais estÃ£o disponÃ­veis?", "Como consultar a populaÃ§Ã£o de um municÃ­pio nos documentos?"]),
+        "pt": ("População municipal", "Dados populacionais dos municípios.",
+               ["Quais dados populacionais estão disponíveis?", "Como consultar a população de um município nos documentos?"]),
         "en": ("Municipal population", "Population data for municipalities.",
                ["Which population data are available?", "How can I find a municipality's population in the documents?"]),
     },
@@ -228,6 +229,14 @@ PALETTES = {
     "forest": {"dark": "#A6CC8D", "light": "#37682C"},
     "violet": {"dark": "#B6A1F4", "light": "#7350BC"},
     "amber": {"dark": "#E4B771", "light": "#8B590B"},
+}
+
+PREFERENCE_OPTIONS = {
+    "language": ("pt", "en"),
+    "appearance": ("dark", "light"),
+    "palette": (*PALETTES, "custom"),
+    "response_style": ("balanced", "brief", "guided"),
+    "font_size": (14, 16, 18, 20),
 }
 
 
@@ -259,25 +268,59 @@ def load_secrets() -> None:
             os.environ[key] = str(secrets[key])
 
 
+def validated_preference(name: str, value):
+    """Keep valid choices and replace obsolete or malformed values with defaults."""
+    default = DEFAULTS[name]
+    if type(value) is not type(default):
+        return default
+    if name in PREFERENCE_OPTIONS and value not in PREFERENCE_OPTIONS[name]:
+        return default
+    if name == "custom_color" and not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+        return default
+    if name == "name":
+        return value[:40]
+    return value
+
+
 def init_session() -> None:
-    st.session_state.setdefault("preferences", dict(DEFAULTS))
-    for key, value in DEFAULTS.items():
-        st.session_state.preferences.setdefault(key, value)
+    stored = st.session_state.get("preferences")
+    preferences = dict(stored) if isinstance(stored, dict) else {}
+    for name, default in DEFAULTS.items():
+        value = validated_preference(name, preferences.get(name, default))
+        preferences[name] = value
+        widget_key = f"pref_{name}"
+        if widget_key in st.session_state:
+            widget_value = st.session_state[widget_key]
+            if type(widget_value) is not type(value) or widget_value != value:
+                # Remove stale widget state before creating the new controls.
+                st.session_state.pop(widget_key)
+    st.session_state.preferences = preferences
     st.session_state.setdefault("messages", [])
 
 
 def save_preference(name: str) -> None:
-    st.session_state.preferences[name] = st.session_state[f"pref_{name}"]
+    st.session_state.preferences[name] = validated_preference(
+        name, st.session_state[f"pref_{name}"]
+    )
 
 
 def preference_select(name: str, options: list[str]) -> str:
-    labels = {value: {"pt": "PortuguÃªs", "en": "English"}[value]
+    if not options:
+        raise ValueError("Preference options must not be empty")
+    current = validated_preference(name, st.session_state.preferences.get(name))
+    if current not in options:
+        current = DEFAULTS[name] if DEFAULTS[name] in options else options[0]
+    st.session_state.preferences[name] = current
+    widget_key = f"pref_{name}"
+    if widget_key in st.session_state and st.session_state[widget_key] != current:
+        st.session_state.pop(widget_key)
+    labels = {value: {"pt": "Português", "en": "English"}[value]
               if value in {"pt", "en"} else tr(value) for value in options}
     return st.selectbox(
         tr(name), options,
-        index=options.index(st.session_state.preferences[name]),
+        index=options.index(current),
         format_func=labels.__getitem__,
-        key=f"pref_{name}", on_change=save_preference, args=(name,),
+        key=widget_key, on_change=save_preference, args=(name,),
     )
 
 
@@ -319,24 +362,25 @@ def export_conversation() -> str:
 
 def render_sidebar() -> None:
     with st.sidebar:
-        st.markdown('<div class="side-brand"><span class="brand-symbol">â†—</span> RS <b>Edu</b></div>', unsafe_allow_html=True)
-        preference_select("language", ["pt", "en"])
+        st.markdown('<div class="side-brand"><span class="brand-symbol">↗</span> RS <b>Edu</b></div>', unsafe_allow_html=True)
+        preference_select("language", list(PREFERENCE_OPTIONS["language"]))
         st.button(tr("new_chat"), key="new_chat", on_click=clear_conversation,
                   use_container_width=True, type="primary",
                   disabled=not bool(st.session_state.messages))
         st.markdown(f'<div class="side-heading">{tr("space")}</div>', unsafe_allow_html=True)
 
         with st.expander(tr("appearance"), expanded=True):
-            mode_labels = {value: tr(value) for value in ("dark", "light")}
-            st.radio(tr("mode"), ["dark", "light"],
-                     index=["dark", "light"].index(st.session_state.preferences["appearance"]),
+            modes = list(PREFERENCE_OPTIONS["appearance"])
+            mode_labels = {value: tr(value) for value in modes}
+            st.radio(tr("mode"), modes,
+                     index=modes.index(st.session_state.preferences["appearance"]),
                      format_func=mode_labels.__getitem__, horizontal=True, key="pref_appearance",
                      on_change=save_preference, args=("appearance",))
-            preference_select("palette", ["ocean", "forest", "violet", "amber", "custom"])
+            preference_select("palette", list(PREFERENCE_OPTIONS["palette"]))
             if st.session_state.preferences["palette"] == "custom":
                 st.color_picker(tr("custom_color"), value=st.session_state.preferences["custom_color"],
                                 key="pref_custom_color", on_change=save_preference, args=("custom_color",))
-            st.select_slider(tr("font_size"), options=[14, 16, 18, 20],
+            st.select_slider(tr("font_size"), options=list(PREFERENCE_OPTIONS["font_size"]),
                              value=st.session_state.preferences["font_size"], key="pref_font_size",
                              on_change=save_preference, args=("font_size",))
             st.checkbox(tr("compact"), value=st.session_state.preferences["compact"],
@@ -348,7 +392,7 @@ def render_sidebar() -> None:
             st.text_input(tr("name"), value=st.session_state.preferences["name"],
                           placeholder=tr("name_placeholder"), max_chars=40, key="pref_name",
                           on_change=save_preference, args=("name",))
-            preference_select("response_style", ["balanced", "brief", "guided"])
+            preference_select("response_style", list(PREFERENCE_OPTIONS["response_style"]))
             st.checkbox(tr("show_sources"), value=st.session_state.preferences["show_sources"],
                         key="pref_show_sources", on_change=save_preference, args=("show_sources",))
 
@@ -708,7 +752,7 @@ def render_exploration(topics: list[dict], ready: bool) -> dict | None:
     columns = st.columns(len(questions))
     for index, (column, question) in enumerate(zip(columns, questions)):
         with column:
-            if st.button(f"{question}  â†—", key=f"suggestion_{selected}_{index}",
+            if st.button(f"{question}  ↗", key=f"suggestion_{selected}_{index}",
                          use_container_width=True, disabled=not ready):
                 st.session_state.pending_question = question
     return topic
@@ -722,7 +766,7 @@ def source_label(item: dict) -> str:
         details.append(tr("municipality", value=item["entity"]))
     if item.get("page") is not None:
         details.append(tr("page", value=item["page"]))
-    return " â€” ".join([source] + details)
+    return " — ".join([source] + details)
 
 
 def render_sources(sources: list[dict]) -> None:
@@ -804,7 +848,7 @@ def render_history() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="RS Edu", page_icon="â†—", layout="wide", initial_sidebar_state="auto")
+    st.set_page_config(page_title="RS Edu", page_icon="↗", layout="wide", initial_sidebar_state="auto")
     load_secrets()
     init_session()
     render_sidebar()
