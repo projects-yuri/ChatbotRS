@@ -470,7 +470,8 @@ def apply_style() -> None:
     .stApp a { color: var(--rs-accent-text); }
     .block-container { max-width: 1100px; padding: 2.7rem 2.4rem 5rem; }
     header[data-testid="stHeader"] { background: transparent; }
-    [data-testid="stDecoration"], [data-testid="stToolbar"], [data-testid="stToolbarActions"],
+    /* Keep native toolbar controls available so the sidebar can be reopened. */
+    [data-testid="stDecoration"],
     [data-testid="stAppDeployButton"],
     .stDeployButton, #MainMenu, footer { display: none; }
     header[data-testid="stHeader"] button { color: var(--rs-muted); }
@@ -848,7 +849,7 @@ def render_history() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="RS Edu", page_icon="↗", layout="wide", initial_sidebar_state="auto")
+    st.set_page_config(page_title="RS Edu", page_icon="↗", layout="wide", initial_sidebar_state="expanded")
     load_secrets()
     init_session()
     render_sidebar()
