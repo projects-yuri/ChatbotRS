@@ -1205,7 +1205,7 @@ def main() -> None:
                     render_sources(sources)
                 except Exception as error:
                     progress.empty()
-                    LOGGER.warning("Answer unavailable (%s)", type(error).__name__)
+                    LOGGER.exception("Answer unavailable")
                     message = {"role": "assistant", "content": "", "sources": [], "error": "answer_error"}
                     st.error(tr("answer_error"))
         st.session_state.messages.append(message)
