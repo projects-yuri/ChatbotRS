@@ -1,27 +1,43 @@
 # -*- coding: utf-8 -*-
-"""RS Edu — a bilingual, customizable interface for the existing RAG project.
+"""RS Edu: bilingual Streamlit interface for the existing src/ backend.
 
-Replace the project's app.py with this file. Keep src/ and the documents as they
-are. English answers and optional response styles reuse the project's existing
-OpenRouter credentials; original source excerpts are kept for verification.
+Drop-in app.py. Requires src.settings.RAW_DIR, src.ingestion.index_documents(reset=)
+and src.rag.answer(question). See LEIA_ME.md for setup and verification limits.
 """
 
 from __future__ import annotations
 
 import html
+import hashlib
 import importlib
+import itertools
 import json
 import logging
 import os
 import re
+import tempfile
+import threading
+import time
 import unicodedata
+import urllib.error
+import urllib.parse
 import urllib.request
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import streamlit as st
 
 
 LOGGER = logging.getLogger(__name__)
+PROJECT_DIR = Path(__file__).resolve().parent
+MAX_QUESTION_CHARS = 6000
+MAX_MESSAGES = 80
+MAX_ANSWER_CHARS = 60000
+MAX_SOURCES = 12
+MAX_EXCERPT_CHARS = 6000
+MAX_API_BYTES = 2 * 1024 * 1024
+INDEX_SCHEMA_VERSION = 2
 SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".csv", ".md"}
 DEFAULTS = {
     "language": "pt",
@@ -90,6 +106,11 @@ COPY = {
         "answer_error": "Não consegui responder agora. Você pode tentar novamente.",
         "retry": "Tentar novamente",
         "adapt_error": "Não foi possível aplicar o idioma ou estilo escolhido. A resposta original está abaixo.",
+        "original_answer": "Ver resposta original",
+        "question_too_long": "Escreva uma pergunta com até {limit} caracteres.",
+        "reference_period": "Referência: {value}",
+        "source_location": "Localização: {value}",
+        "source_link": "Abrir fonte oficial",
         "you": "Você",
         "assistant": "RS Edu",
         "document_question": "O que o documento “{name}” explica?",
@@ -149,6 +170,11 @@ COPY = {
         "answer_error": "I couldn't answer just now. You can try again.",
         "retry": "Try again",
         "adapt_error": "The selected language or style couldn't be applied. The original answer is shown below.",
+        "original_answer": "View original answer",
+        "question_too_long": "Please keep your question within {limit} characters.",
+        "reference_period": "Reference period: {value}",
+        "source_location": "Location: {value}",
+        "source_link": "Open source",
         "you": "You",
         "assistant": "RS Edu",
         "document_question": "What does the document “{name}” explain?",
@@ -174,8 +200,8 @@ TOPICS = [
                ["What is IMERS?", "Which indicators make up IMERS?"]),
     },
     {
-        "id": "pre", "terms": [r"\bpre\b", r"participacao na receita educacional"],
-        "pt": ("PRE", "Participação na receita educacional.",
+        "id": "pre", "terms": [r"\bpre\b", r"participacao no rateio da cota parte da educacao"],
+        "pt": ("PRE", "Participação no rateio da cota-parte da educação.",
                ["O que é a PRE?", "Como a PRE é calculada?"]),
         "en": ("PRE", "Municipal education revenue share.",
                ["What is PRE?", "How is PRE calculated?"]),
@@ -241,31 +267,25 @@ PREFERENCE_OPTIONS = {
 
 
 def tr(key: str, **values) -> str:
-    return COPY[st.session_state.preferences["language"]][key].format(**values)
+    language = st.session_state.get("preferences", {}).get("language", "pt")
+    return COPY.get(language, COPY["pt"])[key].format(**values)
 
 
 def load_secrets() -> None:
+    """Support file-based and injected secrets; explicit environment wins."""
     try:
-        paths = st.get_option("secrets.files")
-    except RuntimeError:
-        paths = [Path.home() / ".streamlit/secrets.toml", Path.cwd() / ".streamlit/secrets.toml"]
-    if not any(Path(path).expanduser().exists() for path in paths):
-        return
-    placeholder = st.empty()
-    try:
-        with placeholder.container():
-            secrets = st.secrets.to_dict()
+        secrets = st.secrets.to_dict()
     except Exception as error:
-        LOGGER.warning("Optional configuration unavailable (%s)", type(error).__name__)
+        LOGGER.debug("Optional secrets unavailable (%s)", type(error).__name__)
         return
-    finally:
-        placeholder.empty()
     for key in (
         "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "OPENROUTER_BASE_URL",
         "EMBEDDING_MODEL", "TOP_K", "CANDIDATE_K", "MAX_CONTEXT_CHUNKS",
+        "RS_EDU_STATE_DIR",
     ):
-        if key in secrets:
-            os.environ[key] = str(secrets[key])
+        value = secrets.get(key)
+        if isinstance(value, (str, int, float)) and str(value).strip():
+            os.environ.setdefault(key, str(value))
 
 
 def validated_preference(name: str, value):
@@ -278,30 +298,28 @@ def validated_preference(name: str, value):
     if name == "custom_color" and not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
         return default
     if name == "name":
-        return value[:40]
+        return " ".join(value.split())[:40]
     return value
 
 
 def init_session() -> None:
     stored = st.session_state.get("preferences")
-    preferences = dict(stored) if isinstance(stored, dict) else {}
+    preferences = {}
+    stored = stored if isinstance(stored, Mapping) else {}
     for name, default in DEFAULTS.items():
-        value = validated_preference(name, preferences.get(name, default))
+        value = validated_preference(name, stored.get(name, default))
         preferences[name] = value
         widget_key = f"pref_{name}"
-        if widget_key in st.session_state:
-            widget_value = st.session_state[widget_key]
-            if type(widget_value) is not type(value) or widget_value != value:
-                # Remove stale widget state before creating the new controls.
-                st.session_state.pop(widget_key)
+        # Initialize controls BEFORE rendering, using a single source of truth.
+        # Do not combine Session State defaults with widget `value` parameters.
+        if type(st.session_state.get(widget_key)) is not type(value) or st.session_state.get(widget_key) != value:
+            st.session_state[widget_key] = value
     st.session_state.preferences = preferences
-    st.session_state.setdefault("messages", [])
+    st.session_state.messages = normalize_messages(st.session_state.get("messages"))
 
 
 def save_preference(name: str) -> None:
-    st.session_state.preferences[name] = validated_preference(
-        name, st.session_state[f"pref_{name}"]
-    )
+    st.session_state.preferences[name] = validated_preference(name, st.session_state.get(f"pref_{name}"))
 
 
 def preference_select(name: str, options: list[str]) -> str:
@@ -312,13 +330,12 @@ def preference_select(name: str, options: list[str]) -> str:
         current = DEFAULTS[name] if DEFAULTS[name] in options else options[0]
     st.session_state.preferences[name] = current
     widget_key = f"pref_{name}"
-    if widget_key in st.session_state and st.session_state[widget_key] != current:
-        st.session_state.pop(widget_key)
+    if st.session_state.get(widget_key) != current:
+        st.session_state[widget_key] = current
     labels = {value: {"pt": "Português", "en": "English"}[value]
               if value in {"pt", "en"} else tr(value) for value in options}
     return st.selectbox(
         tr(name), options,
-        index=options.index(current),
         format_func=labels.__getitem__,
         key=widget_key, on_change=save_preference, args=(name,),
     )
@@ -327,6 +344,8 @@ def preference_select(name: str, options: list[str]) -> str:
 def clear_conversation() -> None:
     st.session_state.messages = []
     st.session_state.pop("pending_question", None)
+    st.session_state.selected_topic = "all"
+    st.session_state.explore_topic = "all"
 
 
 def reset_appearance() -> None:
@@ -343,6 +362,17 @@ def retry_last_question() -> None:
             st.session_state.pending_question = messages.pop()["content"]
 
 
+def take_question(typed_question: str | None, ready: bool) -> str | None:
+    """Consume the queue once, even when a typed question takes precedence."""
+    if not ready:
+        return None
+    pending = st.session_state.pop("pending_question", None)
+    for candidate in (typed_question, pending):
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return None
+
+
 def export_conversation() -> str:
     lines = ["# RS Edu", ""]
     for message in st.session_state.messages:
@@ -356,6 +386,9 @@ def export_conversation() -> str:
             lines.append(tr("sources", count=len(message["sources"])))
             for source in message["sources"]:
                 lines.append(f"- {source_label(source)}")
+                for key in ("reference_period", "source_locator", "url"):
+                    if source.get(key):
+                        lines.append(f"  - {key}: {source[key]}")
             lines.append("")
     return "\n".join(lines)
 
@@ -373,28 +406,26 @@ def render_sidebar() -> None:
             modes = list(PREFERENCE_OPTIONS["appearance"])
             mode_labels = {value: tr(value) for value in modes}
             st.radio(tr("mode"), modes,
-                     index=modes.index(st.session_state.preferences["appearance"]),
                      format_func=mode_labels.__getitem__, horizontal=True, key="pref_appearance",
                      on_change=save_preference, args=("appearance",))
             preference_select("palette", list(PREFERENCE_OPTIONS["palette"]))
             if st.session_state.preferences["palette"] == "custom":
-                st.color_picker(tr("custom_color"), value=st.session_state.preferences["custom_color"],
-                                key="pref_custom_color", on_change=save_preference, args=("custom_color",))
+                st.color_picker(tr("custom_color"), key="pref_custom_color",
+                                on_change=save_preference, args=("custom_color",))
             st.select_slider(tr("font_size"), options=list(PREFERENCE_OPTIONS["font_size"]),
-                             value=st.session_state.preferences["font_size"], key="pref_font_size",
+                             key="pref_font_size",
                              on_change=save_preference, args=("font_size",))
-            st.checkbox(tr("compact"), value=st.session_state.preferences["compact"],
-                        key="pref_compact", on_change=save_preference, args=("compact",))
+            st.checkbox(tr("compact"), key="pref_compact", on_change=save_preference, args=("compact",))
             st.button(tr("reset"), on_click=reset_appearance, key="reset_appearance",
                       use_container_width=True)
 
         with st.expander(tr("conversation")):
-            st.text_input(tr("name"), value=st.session_state.preferences["name"],
+            st.text_input(tr("name"),
                           placeholder=tr("name_placeholder"), max_chars=40, key="pref_name",
                           on_change=save_preference, args=("name",))
             preference_select("response_style", list(PREFERENCE_OPTIONS["response_style"]))
-            st.checkbox(tr("show_sources"), value=st.session_state.preferences["show_sources"],
-                        key="pref_show_sources", on_change=save_preference, args=("show_sources",))
+            st.checkbox(tr("show_sources"), key="pref_show_sources",
+                        on_change=save_preference, args=("show_sources",))
 
         if st.session_state.messages:
             st.download_button(tr("download"), data=export_conversation(),
@@ -424,11 +455,12 @@ def contrast(a: str, b: str) -> float:
     return (second + 0.05) / (first + 0.05)
 
 
-def readable_accent(color: str, surface: str) -> str:
-    target = "#FFFFFF" if luminance(surface) < 0.18 else "#000000"
+def readable_accent(color: str, surface: str, *backgrounds: str) -> str:
+    surfaces = (surface, *backgrounds)
+    target = max(("#FFFFFF", "#000000"), key=lambda c: min(contrast(c, bg) for bg in surfaces))
     for step in range(21):
         candidate = blend(target, color, step / 20)
-        if contrast(candidate, surface) >= 4.5:
+        if all(contrast(candidate, bg) >= 4.5 for bg in surfaces):
             return candidate
     return target
 
@@ -442,9 +474,9 @@ def apply_style() -> None:
     # ColorPicker supplies a hex string; validate before inserting it into CSS.
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", accent):
         accent = DEFAULTS["custom_color"]
-    accent_text = readable_accent(accent, surface)
-    on_accent = "#07191C" if contrast(accent, "#07191C") >= 4.5 else "#FFFFFF"
     soft, user_bg = blend(accent, surface, 0.09), blend(accent, surface, 0.13)
+    accent_text = readable_accent(accent, surface, bg, sidebar, soft, user_bg)
+    on_accent = max(("#000000", "#FFFFFF"), key=lambda c: contrast(accent, c))
     pad = "16px" if prefs["compact"] else "25px"
     hero_size = "2.6rem" if prefs["compact"] else "3.6rem"
     css = """
@@ -639,13 +671,17 @@ def normalized(text: str) -> str:
 
 
 def document_signature(raw_dir: Path) -> tuple:
+    """Match the original backend's flat RAW_DIR inventory, tolerating races."""
     if not raw_dir.is_dir():
         return ()
     files = []
     for path in sorted(raw_dir.iterdir(), key=lambda value: value.name.casefold()):
-        if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS:
-            stat = path.stat()
-            files.append((str(path), stat.st_size, stat.st_mtime_ns))
+        try:
+            if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS:
+                stat = path.stat()
+                files.append((str(path.resolve()), stat.st_size, stat.st_mtime_ns))
+        except OSError:
+            LOGGER.warning("Document inventory changed during scan")
     return tuple(files)
 
 
@@ -653,17 +689,30 @@ def document_sample(path: Path) -> str:
     if path.suffix.lower() == ".pdf":
         try:
             from pypdf import PdfReader
-            reader = PdfReader(str(path))
-            return " ".join((page.extract_text() or "")[:16000] for page in reader.pages[:3])
-        except Exception:
+            with path.open("rb") as handle:
+                reader = PdfReader(handle)
+                count = len(reader.pages)
+                if not count:
+                    return ""
+                positions = sorted({0, 1, count // 2, count - 1} & set(range(count)))
+                return " ".join((reader.pages[i].extract_text() or "")[:16000] for i in positions)
+        except Exception as error:
+            LOGGER.debug("PDF preview unavailable (%s)", type(error).__name__)
             return ""
     try:
         with path.open("rb") as handle:
-            data = handle.read(65536)
+            size = path.stat().st_size
+            data = handle.read(32768)
+            if size > 32768:
+                handle.seek(max(32768, size // 2 - 8192))
+                data += b"\n" + handle.read(16384)
+                handle.seek(max(49152, size - 16384))
+                data += b"\n" + handle.read(16384)
         try:
             return data.decode("utf-8-sig")
         except UnicodeDecodeError:
-            return data.decode("latin-1")
+            utf8 = data.decode("utf-8-sig", errors="replace")
+            return utf8 if utf8.count("\ufffd") < max(3, len(utf8) // 1000) else data.decode("cp1252", errors="replace")
     except OSError:
         return ""
 
@@ -673,7 +722,7 @@ def document_title(path: Path) -> str:
     return title[:90] or path.name
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=4)
 def discover_topics(signature: tuple) -> list[dict]:
     found = {}
     others = []
@@ -685,7 +734,8 @@ def discover_topics(signature: tuple) -> list[dict]:
         for topic in matches:
             found[topic["id"]] = topic
         if not matches:
-            others.append({"id": f"document_{len(others)}", "title": document_title(path)})
+            digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:16]
+            others.append({"id": f"document_{digest}", "title": document_title(path)})
     return [topic for topic in TOPICS if topic["id"] in found] + others
 
 
@@ -699,11 +749,69 @@ def topic_questions(topic: dict) -> list[str]:
     return topic[st.session_state.preferences["language"]][2]
 
 
-@st.cache_resource(show_spinner=False)
-def ensure_index(signature: tuple):
-    # The signature refreshes the cache when available documents change.
-    from src.ingestion import index_documents
-    return index_documents(reset=False)
+@dataclass
+class IndexState:
+    # The index is shared by sessions; serialize changes within this process.
+    lock: object = field(default_factory=threading.RLock)
+    ready: dict[str, str] = field(default_factory=dict)
+
+
+@st.cache_resource(show_spinner=False, max_entries=1)
+def index_state() -> IndexState:
+    return IndexState()
+
+
+def index_manifest_path(raw_dir: Path) -> Path:
+    base = Path(os.getenv("RS_EDU_STATE_DIR", str(PROJECT_DIR / ".rsedu"))).expanduser()
+    identity = hashlib.sha256(str(raw_dir.resolve()).encode()).hexdigest()[:20]
+    return base / f"index-{identity}.json"
+
+
+def ensure_index(signature: tuple, raw_dir: Path, settings) -> None:
+    """Rebuild on document/model changes; persist success, never failed builds.
+
+    The backend owns its index files and must implement reset=True correctly.
+    First adoption rebuilds once, since an older index has no trusted manifest.
+    """
+    if not signature:
+        raise ValueError("No supported documents")
+    embedding = os.getenv("EMBEDDING_MODEL") or str(getattr(settings, "EMBEDDING_MODEL", ""))
+    fingerprint = hashlib.sha256(json.dumps(
+        {"schema": INDEX_SCHEMA_VERSION, "documents": signature, "embedding": embedding},
+        sort_keys=True, ensure_ascii=False,
+    ).encode("utf-8")).hexdigest()
+    key = str(raw_dir.resolve())
+    state = index_state()
+    with state.lock:
+        if state.ready.get(key) == fingerprint:
+            return
+        manifest = index_manifest_path(raw_dir)
+        try:
+            previous = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            previous = {}
+        reset = not isinstance(previous, dict) or previous.get("fingerprint") != fingerprint
+        from src.ingestion import index_documents
+        index_documents(reset=reset)
+        # Write atomically so interruption cannot leave a partial manifest.
+        temporary = None
+        try:
+            manifest.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=manifest.parent,
+                                             prefix="index-", suffix=".tmp", delete=False) as handle:
+                temporary = Path(handle.name)
+                json.dump({"fingerprint": fingerprint, "schema": INDEX_SCHEMA_VERSION}, handle)
+            os.replace(temporary, manifest)
+        except OSError as error:
+            # Read-only deployment: retain the in-process success marker.
+            LOGGER.warning("Index manifest unavailable (%s)", type(error).__name__)
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    LOGGER.debug("Temporary manifest cleanup unavailable")
+        state.ready[key] = fingerprint
 
 
 def render_header(topics: list[dict]) -> None:
@@ -734,13 +842,15 @@ def render_exploration(topics: list[dict], ready: bool) -> dict | None:
     selected = st.session_state.get("selected_topic", "all")
     if selected not in options:
         selected = "all"
+    if st.session_state.get("explore_topic") not in options:
+        st.session_state.explore_topic = selected
 
     def save_topic():
         st.session_state.selected_topic = st.session_state.explore_topic
 
     labels = {value: topic_label(topic) for value, topic in by_id.items()}
     labels["all"] = tr("all_topics")
-    selected = st.selectbox(tr("explore"), options, index=options.index(selected),
+    selected = st.selectbox(tr("explore"), options,
                             format_func=labels.__getitem__,
                             key="explore_topic", on_change=save_topic)
     topic = by_id.get(selected)
@@ -759,9 +869,129 @@ def render_exploration(topics: list[dict], ready: bool) -> dict | None:
     return topic
 
 
+def short_text(value, limit: int) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value if len(value) <= limit else value[:limit - 1] + "…"
+
+
+def safe_url(value) -> str:
+    if not isinstance(value, str) or len(value) > 2048 or any(c.isspace() for c in value):
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        return value if parsed.scheme in {"http", "https"} and parsed.hostname and not parsed.username else ""
+    except ValueError:
+        return ""
+
+
+def normalize_sources(sources) -> list[dict]:
+    """Accept common backend source shapes; keep bounded, serializable data."""
+    if sources is None:
+        return []
+    if isinstance(sources, (Mapping, str)) or hasattr(sources, "page_content"):
+        sources = [sources]
+    try:
+        candidates = itertools.islice(iter(sources), MAX_SOURCES * 3)
+    except TypeError:
+        return []
+    result, seen = [], set()
+    for item in candidates:
+        if isinstance(item, str):
+            item = {"source": item}
+        elif hasattr(item, "page_content"):
+            item = {"metadata": getattr(item, "metadata", {}),
+                    "page_content": getattr(item, "page_content", "")}
+        if not isinstance(item, Mapping):
+            continue
+        metadata = item.get("metadata")
+        metadata = metadata if isinstance(metadata, Mapping) else {}
+        merged = {**metadata, **{k: v for k, v in item.items() if v is not None}}
+        text = merged.get("text") or merged.get("page_content") or merged.get("excerpt") or ""
+        source = merged.get("source") or merged.get("title") or merged.get("filename") or ""
+        if isinstance(source, os.PathLike):
+            source = os.fspath(source)
+        entry = {"source": short_text(source, 1000), "text": short_text(text, MAX_EXCERPT_CHARS)}
+        page = merged.get("page_number", merged.get("page"))
+        # Only explicit page_index is unambiguously zero-based.
+        if type(merged.get("page_index")) is int and merged["page_index"] >= 0:
+            page = merged["page_index"] + 1
+        if type(page) is int and page > 0:
+            entry["page"] = page
+        elif isinstance(page, str) and page.strip():
+            entry["page"] = page[:40]
+        for key in ("entity", "reference_period", "source_locator"):
+            value = merged.get(key)
+            if isinstance(value, (str, int)) and not isinstance(value, bool):
+                entry[key] = str(value)[:400]
+        urls = merged.get("source_urls", [])
+        url = safe_url(merged.get("url")) or safe_url(source)
+        if not url and isinstance(urls, (list, tuple)):
+            url = next((u for v in urls[:MAX_SOURCES] if (u := safe_url(v))), "")
+        if url:
+            entry["url"] = url
+        if not entry["source"] and not entry["text"] and not url:
+            continue
+        identity = (entry["source"], entry.get("page"), entry["text"], url)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        result.append(entry)
+        if len(result) == MAX_SOURCES:
+            break
+    return result
+
+
+def normalize_messages(messages) -> list[dict]:
+    if not isinstance(messages, list):
+        return []
+    clean = []
+    for message in messages[-MAX_MESSAGES:]:
+        if not isinstance(message, Mapping) or message.get("role") not in ("user", "assistant"):
+            continue
+        content = message.get("content")
+        error = message.get("error")
+        if not isinstance(content, str):
+            continue
+        item = {"role": message["role"], "content": content[:MAX_ANSWER_CHARS]}
+        if message["role"] == "assistant":
+            item["sources"] = normalize_sources(message.get("sources"))
+            if error == "answer_error":
+                item["error"] = error
+            if message.get("notice") == "adapt_error":
+                item["notice"] = "adapt_error"
+            if isinstance(message.get("original_content"), str):
+                item["original_content"] = message["original_content"][:MAX_ANSWER_CHARS]
+        clean.append(item)
+    while clean and clean[0]["role"] != "user":
+        clean.pop(0)
+    return clean
+
+
+def normalize_rag_result(result) -> tuple[str, list[dict]]:
+    if isinstance(result, Mapping):
+        response = result.get("answer", result.get("result", result.get("response")))
+        sources = result.get("sources", result.get("source_documents"))
+    elif isinstance(result, (tuple, list)) and len(result) == 2:
+        response, sources = result
+    else:
+        raise ValueError("Unsupported backend response format")
+    if not isinstance(response, str) or not response.strip():
+        raise ValueError("Empty backend answer")
+    if len(response) > MAX_ANSWER_CHARS:
+        raise ValueError("Backend answer exceeds display budget")
+    return response.strip(), normalize_sources(sources)
+
+
 def source_label(item: dict) -> str:
     # Show the document name, never a local filesystem path.
-    source = re.split(r"[/\\]", str(item.get("source") or tr("source")))[-1]
+    original = str(item.get("source") or tr("source"))
+    url = safe_url(original)
+    if url:
+        parsed = urllib.parse.urlsplit(url)
+        source = parsed.path.rstrip("/").rsplit("/", 1)[-1] or parsed.hostname
+    else:
+        source = re.split(r"[/\\]", original.rstrip("/\\"))[-1]
     details = []
     if item.get("entity"):
         details.append(tr("municipality", value=item["entity"]))
@@ -776,10 +1006,63 @@ def render_sources(sources: list[dict]) -> None:
     with st.expander(tr("sources", count=len(sources)), expanded=False):
         for index, source in enumerate(sources, start=1):
             st.text(f"{index}. {source_label(source)}")
+            if source.get("reference_period"):
+                st.caption(tr("reference_period", value=source["reference_period"]))
+            if source.get("source_locator"):
+                st.caption(tr("source_location", value=source["source_locator"]))
+            if safe_url(source.get("url")):
+                st.link_button(tr("source_link"), source["url"])
             if source.get("text"):
                 st.caption(tr("original_excerpt"))
                 # Excerpts are untrusted document text, not HTML/Markdown.
                 st.text(str(source["text"]))
+
+
+def protected_numbers(text: str) -> set[str]:
+    """Check numeric preservation; this is not a full factual verifier."""
+    text = re.sub(r"(?m)^\s*\d{1,2}[.)]\s+", "", text)
+    return {re.sub(r"\s+", "", n).replace(",", ".")
+            for n in re.findall(r"(?<!\w)\d+(?:[.,]\d+)*(?:\s*%)?", text)}
+
+
+def request_edited_answer(api_key: str, model: str, base_url: str, payload: dict) -> str:
+    if not safe_url(base_url):
+        raise ValueError("Invalid model endpoint")
+    request = urllib.request.Request(
+        base_url.rstrip("/") + "/chat/completions",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    # Retry only an explicit transient HTTP failure, never a timeout of unknown
+    # outcome or a credential/quota error. At most one short retry.
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(request, timeout=25) as result:
+                raw = result.read(MAX_API_BYTES + 1)
+            if len(raw) > MAX_API_BYTES:
+                raise ValueError("Model response is too large")
+            body = json.loads(raw)
+            if not isinstance(body, dict) or body.get("error"):
+                raise ValueError("Model API returned an error")
+            choice = body["choices"][0]
+            if choice.get("finish_reason") not in (None, "stop"):
+                raise ValueError("Model did not finish a complete answer")
+            edited = choice["message"]["content"]
+            if not isinstance(edited, str) or not edited.strip() or len(edited) > MAX_ANSWER_CHARS:
+                raise ValueError("Empty or oversized model answer")
+            return edited.strip()
+        except urllib.error.HTTPError as error:
+            retry = attempt == 0 and error.code in {429, 502, 503, 504}
+            try:
+                delay = float(error.headers.get("Retry-After", "1"))
+            except (TypeError, ValueError, AttributeError):
+                delay = 1
+            error.close()
+            if not retry or delay > 2 or delay < 0:
+                raise
+            time.sleep(delay)
+    raise RuntimeError("No completed model response")
 
 
 def adapt_answer(response: str, settings) -> tuple[str, str | None]:
@@ -813,19 +1096,11 @@ def adapt_answer(response: str, settings) -> tuple[str, str | None]:
         "messages": [{"role": "system", "content": instructions},
                      {"role": "user", "content": response}],
     }
-    request = urllib.request.Request(
-        str(base_url).rstrip("/") + "/chat/completions",
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(request, timeout=45) as result:
-            result_body = json.load(result)
-        edited = result_body["choices"][0]["message"]["content"]
-        if not isinstance(edited, str) or not edited.strip():
-            raise ValueError("Empty formatted answer")
-        return edited.strip(), None
+        edited = request_edited_answer(str(api_key), str(model), str(base_url), payload)
+        if protected_numbers(response) != protected_numbers(edited):
+            raise ValueError("Edited answer changed protected numbers")
+        return edited, None
     except Exception as error:
         LOGGER.warning("Answer formatting unavailable (%s)", type(error).__name__)
         return response, "adapt_error"
@@ -845,6 +1120,9 @@ def render_history() -> None:
                     st.warning(tr(message["notice"]))
                 st.markdown(message["content"])
                 if message["role"] == "assistant":
+                    if message.get("original_content"):
+                        with st.expander(tr("original_answer")):
+                            st.markdown(message["original_content"])
                     render_sources(message.get("sources", []))
 
 
@@ -859,7 +1137,9 @@ def main() -> None:
     preparation_error = False
     try:
         settings = importlib.import_module("src.settings")
-        signature = document_signature(Path(settings.RAW_DIR))
+        # Keep the same working-directory semantics as the existing backend.
+        raw_dir = Path(settings.RAW_DIR).expanduser().resolve()
+        signature = document_signature(raw_dir)
         topics = discover_topics(signature)
     except Exception as error:
         preparation_error = True
@@ -869,7 +1149,7 @@ def main() -> None:
     if signature and not preparation_error:
         try:
             with st.spinner(tr("preparing")):
-                ensure_index(signature)
+                ensure_index(signature, raw_dir, settings)
             ready = True
         except Exception as error:
             preparation_error = True
@@ -894,10 +1174,13 @@ def main() -> None:
         render_history()
 
     placeholder = tr("input_topic", topic=topic_label(active_topic)) if active_topic else tr("input")
-    typed_question = st.chat_input(placeholder, key="chat_question", disabled=not ready)
-    question = typed_question or st.session_state.pop("pending_question", None)
-    if question and question.strip() and ready:
-        question = question.strip()
+    typed_question = st.chat_input(placeholder, key="chat_question", disabled=not ready,
+                                   max_chars=MAX_QUESTION_CHARS)
+    question = take_question(typed_question, ready)
+    if question and len(question) > MAX_QUESTION_CHARS:
+        st.warning(tr("question_too_long", limit=MAX_QUESTION_CHARS))
+        return
+    if question:
         st.session_state.messages.append({"role": "user", "content": question})
         with conversation_panel:
             with st.chat_message("user"):
@@ -908,23 +1191,25 @@ def main() -> None:
                     with progress.container():
                         with st.spinner(tr("thinking")):
                             from src.rag import answer
-                            response, sources = answer(question)
-                            if not isinstance(response, str) or not response.strip():
-                                raise ValueError("Empty answer")
+                            response, sources = normalize_rag_result(answer(question))
+                            original_response = response
                             response, notice = adapt_answer(response, settings)
                     progress.empty()
                     message = {"role": "assistant", "content": response,
-                               "sources": sources or [], "notice": notice}
+                               "sources": sources, "notice": notice}
+                    if response != original_response:
+                        message["original_content"] = original_response
                     if notice:
                         st.warning(tr(notice))
                     st.markdown(response)
-                    render_sources(sources or [])
+                    render_sources(sources)
                 except Exception as error:
                     progress.empty()
                     LOGGER.warning("Answer unavailable (%s)", type(error).__name__)
                     message = {"role": "assistant", "content": "", "sources": [], "error": "answer_error"}
                     st.error(tr("answer_error"))
         st.session_state.messages.append(message)
+        st.session_state.messages = normalize_messages(st.session_state.messages)
         st.rerun()
 
 
