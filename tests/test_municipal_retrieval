@@ -1,0 +1,92 @@
+"""Regression cases for the Porto Alegre retrieval failure in the chat export."""
+from contextlib import contextmanager
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest import TestCase
+from unittest.mock import patch
+
+from src import ingestion, lightweight, rag
+
+
+@contextmanager
+def corpus(text):
+    with TemporaryDirectory() as directory:
+        folder = Path(directory)
+        (folder / 'test.md').write_text(text, encoding='utf-8')
+        with patch.object(lightweight, 'RAW_DIR', folder):
+            lightweight._corpus.cache_clear()
+            try:
+                yield folder
+            finally:
+                lightweight._corpus.cache_clear()
+
+
+class MunicipalityTests(TestCase):
+    def test_exact_request_recovers_porto_alegre_values(self):
+        hits = rag.retrieve('traga dados relacionados ao IMERS educacional de porto alegre')
+        self.assertTrue(hits)
+        self.assertEqual(hits[0].get('codigo_ibge'), '4314902')
+        context = rag.build_context(hits)
+        self.assertIn('46,18', context)
+        self.assertIn('42,80', context)
+        self.assertNotIn('Porto Lucena', context)
+        self.assertNotIn('Porto Vera Cruz', context)
+
+    def test_partial_city_words_do_not_select_another_city(self):
+        text = ('# Dados\n\n'
+                '## Município: Porto Lucena — IBGE 4315008\n\n'
+                + 'IMERS educacional Porto dados aprendizagem. ' * 90
+                + '\n## Município: Porto Alegre — IBGE 4314902\n\n'
+                'IMERS de Porto Alegre em 2025: 46,18.\n')
+        with corpus(text):
+            hits = lightweight.retrieve_lexical('IMERS educacional de Porto Alegre', 5)
+        self.assertTrue(hits)
+        self.assertTrue(all(h.get('codigo_ibge') == '4314902' for h in hits))
+
+    def test_missing_city_does_not_fall_back_to_state_or_other_city(self):
+        text = ('# Resumo\n\nMédia do IMERS do RS em 2025: 66,97.\n'
+                '## Município: Porto Lucena — IBGE 4315008\n\n'
+                'Dados municipais de IMERS e aprendizagem em Porto Lucena.\n')
+        with corpus(text):
+            self.assertEqual(lightweight.retrieve_lexical('IMERS de Porto Alegre em 2025'), [])
+
+    def test_absent_city_has_specific_answer_without_calling_llm(self):
+        with patch.object(rag, 'retrieve', return_value=[]):
+            response, sources = rag.answer('Qual o IMERS de Caxias do Sul em 2025?')
+        self.assertIn('Caxias do Sul', response)
+        self.assertIn('IMERSVis', response)
+        self.assertEqual(sources, [])
+
+    def test_city_names_are_complete_and_state_is_not_city(self):
+        self.assertEqual(lightweight.requested_municipalities('IMERS do Rio Grande do Sul'), set())
+        self.assertEqual(lightweight.requested_municipalities('IMERS de Vista Alegre do Prata'), {'4323606'})
+        self.assertEqual(lightweight.requested_municipalities('Compare Porto Alegre e Santa Maria'), {'4314902', '4316907'})
+        self.assertEqual(lightweight.requested_municipalities('Qual o progresso do IMERS no RS?'), set())
+        self.assertEqual(lightweight.requested_municipalities('Qual o IMERS do município de Progresso?'), {'4315156'})
+        self.assertEqual(lightweight.requested_municipalities('IMERS do código IBGE 4314902'), {'4314902'})
+
+    def test_large_markdown_keeps_city_and_bounds_each_chunk(self):
+        text = ('# Indicadores\n\n### Município: Porto Alegre — IBGE 4314902\n\n'
+                '#### Porto Alegre — Resultados\n\n| Campo | 2024 | 2025 |\n| --- | --- | --- |\n'
+                + '| IMERS | 42,80 | 46,18 |\n' * 200)
+        with corpus(text) as folder:
+            records = list(ingestion.document_records(folder))
+        self.assertGreater(len(records), 2)
+        self.assertTrue(all(len(text) <= 900 for text, _ in records))
+        self.assertTrue(all(m.get('codigo_ibge') == '4314902' for _, m in records))
+        self.assertTrue(all('Porto Alegre' in text for text, _ in records))
+
+    def test_canonical_base_ignores_numbered_download_copy(self):
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)
+            canonical = folder / 'Base_Unificada_Educacao_RS.md'
+            duplicate = folder / 'Base_Unificada_Educacao_RS (1).md'
+            canonical.write_text('## Essencial\n\nConteúdo resumido e legível sobre educação.\n')
+            duplicate.write_text('## Antiga\n\nEste é o conteúdo antigo que não deve entrar.\n')
+            self.assertEqual(ingestion.selected_document_paths(folder), [canonical])
+            records = list(ingestion.document_records(folder))
+            self.assertTrue(records)
+            self.assertTrue(all(m['source'] == canonical.name for _, m in records))
+            before = ingestion.raw_manifest_hash(folder)
+            duplicate.write_text('Outro conteúdo antigo, ainda fora da seleção.')
+            self.assertEqual(ingestion.raw_manifest_hash(folder), before)
