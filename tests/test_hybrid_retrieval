@@ -1,0 +1,107 @@
+"""Regressões do foco ICMS, filtros e fusão; não carrega embeddings reais."""
+import ast
+from pathlib import Path
+from unittest import TestCase
+from unittest.mock import patch
+
+from src import ingestion, rag, search
+from src.retrieval_policy import plan_query, vector_filter
+from src.settings import RAW_DIR
+
+
+class CollectionFixture:
+    def __init__(self, rows, fail=False):
+        self.rows, self.fail, self.calls = rows, fail, []
+
+    def count(self):
+        return len(self.rows)
+
+    def query(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.fail:
+            raise RuntimeError('vector service unavailable')
+        return {'documents': [[t for t, m in self.rows]],
+                'metadatas': [[m for t, m in self.rows]],
+                'distances': [[.1 + i*.02 for i in range(len(self.rows))]]}
+
+
+def record_with(title):
+    return next((t, m) for t, m in ingestion.document_records(RAW_DIR)
+                if title in m.get('section', ''))
+
+
+class HybridTests(TestCase):
+    def test_attached_legal_question_selects_laws_not_municipal_data(self):
+        hits = rag.retrieve('Quais leis regulamentam o ICMS Educacional no RS?', focus='icms')
+        context = rag.build_context(hits)
+        for number in ('15.766', '56.679', '56.723'):
+            self.assertIn(number, context)
+        self.assertTrue(all(h['kind'] == 'legislation' for h in hits))
+        self.assertFalse(any(h.get('codigo_ibge') for h in hits))
+
+    def test_selected_focus_resolves_short_legal_question(self):
+        hits = rag.retrieve('Quais leis regulamentam?', focus='icms')
+        self.assertIn('15.766', rag.build_context(hits))
+
+    def test_answer_forwards_focus_to_retrieval(self):
+        with patch.object(rag, 'retrieve', return_value=[]) as retrieve:
+            rag.answer('Quais leis regulamentam?', focus='icms')
+        retrieve.assert_called_once_with('Quais leis regulamentam?', focus='icms')
+
+    def test_explicit_question_takes_precedence_over_selected_focus(self):
+        hits = rag.retrieve('O que é Fundeb?', focus='icms')
+        self.assertIn('14.113', hits[0]['text'])
+        self.assertTrue(all(h['topic_fundeb'] for h in hits))
+
+    def test_vector_errors_keep_the_lexical_answer(self):
+        collection = CollectionFixture([record_with('Leis principais')], fail=True)
+        with self.assertLogs('src.search', level='WARNING'):
+            hits = search.retrieve('Quais leis regulamentam o ICMS?', mode='hybrid', collection_factory=lambda: collection)
+        self.assertIn('15.766', rag.build_context(hits))
+        self.assertTrue(all(h['retrieval_methods'] == 'lexical' for h in hits))
+
+    def test_vector_and_lexical_fuse_without_duplicate_fragments(self):
+        collection = CollectionFixture([record_with('Leis principais')])
+        hits = search.retrieve('Quais leis regulamentam o ICMS?', mode='hybrid', collection_factory=lambda: collection)
+        self.assertTrue(any(h['retrieval_methods'] == 'lexical|vector' for h in hits))
+        self.assertEqual(len(hits), len({search.key(h) for h in hits}))
+        self.assertEqual(collection.calls[0]['where'], vector_filter(plan_query('Quais leis regulamentam o ICMS?')))
+        self.assertLessEqual(collection.calls[0]['n_results'], collection.count())
+
+    def test_wrong_vector_candidates_are_rejected_even_if_backend_ignores_filter(self):
+        collection = CollectionFixture([record_with('Município: Porto Lucena'), record_with('Fundeb:')])
+        hits = search.retrieve('Quais leis regulamentam o ICMS?', mode='vector', collection_factory=lambda: collection)
+        self.assertTrue(hits)
+        self.assertTrue(all(h['kind'] == 'legislation' and h['topic_icms'] for h in hits))
+        self.assertNotIn('Porto Lucena', rag.build_context(hits))
+
+    def test_vector_can_add_a_semantic_candidate_not_returned_by_bm25(self):
+        collection = CollectionFixture([record_with('ICMS Educacional e IPM:')])
+        with patch('src.lightweight.retrieve_lexical', return_value=[]):
+            hits = search.retrieve('Como o Estado compartilha receita com as prefeituras?', focus='icms', mode='hybrid', collection_factory=lambda: collection)
+        self.assertTrue(hits)
+        self.assertEqual(hits[0]['retrieval_methods'], 'vector')
+
+    def test_city_comparison_keeps_both_cities_and_rejects_third(self):
+        collection = CollectionFixture([record_with('Município: Porto Lucena')])
+        hits = search.retrieve('Compare Porto Alegre e Santa Maria em 2025', mode='hybrid', collection_factory=lambda: collection)
+        self.assertTrue({'4314902', '4316907'} <= {h.get('codigo_ibge') for h in hits})
+        self.assertFalse(any(h.get('entity') == 'Porto Lucena' for h in hits))
+
+    def test_generic_question_does_not_retrieve_municipal_rows(self):
+        hits = rag.retrieve('Como funciona o ICMS Educacional no RS?', focus='icms')
+        self.assertTrue(hits)
+        self.assertTrue(all(h['scope'] == 'state' for h in hits))
+
+    def test_streamlit_passes_selected_focus_to_answer(self):
+        tree = ast.parse((Path(__file__).parents[1] / 'app.py').read_text())
+        calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Name) and node.func.id == 'answer']
+        self.assertTrue(calls)
+        self.assertTrue(any(kw.arg == 'focus' for call in calls for kw in call.keywords))
+
+    def test_source_metadata_keeps_hierarchy_scope_and_topics(self):
+        _, metadata = record_with('Decreto nº 56.723')
+        self.assertIn('legislação', metadata['section_path'])
+        self.assertEqual(metadata['scope'], 'state')
+        self.assertTrue(metadata['topic_pre'])
