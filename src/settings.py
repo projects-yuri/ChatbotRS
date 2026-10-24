@@ -131,7 +131,7 @@ INDEX_BATCH_SIZE = int(
 TOP_K = int(
     os.getenv(
         "TOP_K",
-        "12",
+        "5",
     )
 )
 
@@ -139,7 +139,7 @@ TOP_K = int(
 CANDIDATE_K = int(
     os.getenv(
         "CANDIDATE_K",
-        "28",
+        "12",
     )
 )
 
@@ -147,7 +147,7 @@ CANDIDATE_K = int(
 MAX_CONTEXT_CHUNKS = int(
     os.getenv(
         "MAX_CONTEXT_CHUNKS",
-        "14",
+        "5",
     )
 )
 
@@ -160,5 +160,11 @@ MAX_CONTEXT_CHUNKS = int(
 # mudanças relevantes na estratégia de indexação.
 INDEX_VERSION = os.getenv(
     "INDEX_VERSION",
-    "pi5-rag-2026-09-15-v5",
+    "rs-hibrida-2026-10-24-v4",
 )
+
+
+# hybrid e vector combinam Chroma + BM25; lexical é a alternativa sem embeddings.
+RETRIEVAL_MODE = os.getenv("RETRIEVAL_MODE", "hybrid").strip().lower()
+if RETRIEVAL_MODE not in {"lexical", "vector", "hybrid"}:
+    raise ValueError("RETRIEVAL_MODE deve ser lexical, hybrid ou vector")
