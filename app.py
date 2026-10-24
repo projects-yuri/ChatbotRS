@@ -3180,6 +3180,7 @@ COPY = {
         "municipality": "município: {value}",
         "original_excerpt": "Trecho original",
         "no_documents": "Ainda não há documentos disponíveis para esta conversa.",
+        "empty_documents": "Os documentos da base estão vazios ou não contêm texto legível. Adicione os arquivos completos à pasta raw/ e reinicie o aplicativo.",
         "unavailable": "Não foi possível preparar o chatbot. Tente novamente em instantes.",
         "answer_error": "Não consegui responder agora. Você pode tentar novamente.",
         "retry": "Tentar novamente",
@@ -3244,6 +3245,7 @@ COPY = {
         "municipality": "municipality: {value}",
         "original_excerpt": "Original excerpt",
         "no_documents": "There are no documents available for this conversation yet.",
+        "empty_documents": "The knowledge-base documents are empty or contain no readable text. Add the complete files to raw/ and restart the app.",
         "unavailable": "We couldn't prepare the chatbot. Please try again shortly.",
         "answer_error": "I couldn't answer just now. You can try again.",
         "retry": "Try again",
@@ -4222,6 +4224,7 @@ def main() -> None:
 
     topics, signature, settings, ready = [], (), None, False
     preparation_error = False
+    preparation_message = "unavailable"
     try:
         settings = importlib.import_module("src.settings")
         # Keep the same working-directory semantics as the existing backend.
@@ -4230,20 +4233,27 @@ def main() -> None:
         topics = discover_topics(signature)
     except Exception as error:
         preparation_error = True
-        LOGGER.warning("Project initialization unavailable (%s)", type(error).__name__)
+        LOGGER.exception("Project initialization unavailable")
 
     render_header(topics)
     if signature and not preparation_error:
         try:
-            with st.spinner(tr("preparing")):
-                ensure_index(signature, raw_dir, settings)
-            ready = True
+            from src.ingestion import NoReadableDocumentsError
+            try:
+                with st.spinner(tr("preparing")):
+                    ensure_index(signature, raw_dir, settings)
+            except NoReadableDocumentsError:
+                preparation_error = True
+                preparation_message = "empty_documents"
+                LOGGER.exception("Document preparation failed: no readable content")
+            else:
+                ready = True
         except Exception as error:
             preparation_error = True
-            LOGGER.warning("Document preparation unavailable (%s)", type(error).__name__)
+            LOGGER.exception("Document preparation unavailable")
 
     if preparation_error:
-        st.error(tr("unavailable"))
+        st.error(tr(preparation_message))
         if st.button(tr("retry"), key="retry_preparation"):
             st.rerun()
     elif not signature:
