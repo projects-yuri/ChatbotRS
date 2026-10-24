@@ -10,8 +10,6 @@ from itertools import chain
 from pathlib import Path
 from typing import Iterable
 
-import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from pypdf import PdfReader
 
 from src.settings import (
@@ -23,6 +21,7 @@ from src.settings import (
     INDEX_BATCH_SIZE,
     INDEX_VERSION,
     RAW_DIR,
+    RETRIEVAL_MODE,
 )
 
 
@@ -49,6 +48,84 @@ SUPPORTED_DOCUMENT_SUFFIXES = {
 
 class NoReadableDocumentsError(ValueError):
     """Supported files exist, but none contains an indexable text passage."""
+
+
+def selected_document_paths(raw_dir: Path) -> list[Path]:
+    """Prefer the canonical base to numbered browser-download duplicates."""
+    if not raw_dir.is_dir():
+        return []
+    paths = sorted(p for p in raw_dir.iterdir()
+                   if p.is_file() and p.suffix.lower() in SUPPORTED_DOCUMENT_SUFFIXES)
+    if any(p.name.casefold() == 'base_unificada_educacao_rs.md' for p in paths):
+        paths = [p for p in paths if not re.fullmatch(
+            r'base_unificada_educacao_rs\s*\(\d+\)\.md', p.name, re.IGNORECASE)]
+    return paths
+
+
+def bounded_chunks(text: str, size: int, overlap: int) -> Iterable[str]:
+    """Bound long tables and paragraphs even without sentence punctuation."""
+    size = max(1, size)
+    overlap = min(max(0, overlap), size // 3)
+    start = 0
+    while start < len(text):
+        end = min(len(text), start + size)
+        if end < len(text):
+            boundary = max(text.rfind('\n', start, end), text.rfind(' ', start, end))
+            if boundary > start + size // 2:
+                end = boundary
+        chunk = text[start:end].strip()
+        if chunk:
+            yield chunk
+        if end == len(text):
+            break
+        start = max(start + 1, end - overlap)
+
+
+def markdown_records(path: Path) -> Iterable[tuple[str, dict]]:
+    """Keep section and municipality context on each bounded Markdown chunk."""
+    text = clean_text(read_text_file(path))
+    headings = list(re.finditer(r'(?m)^(#{1,6})[ \t]+([^\n]+)$', text))
+    sections = []
+    if not headings:
+        sections.append((1, path.stem, text))
+    else:
+        if text[:headings[0].start()].strip():
+            sections.append((1, path.stem, text[:headings[0].start()]))
+        for index, heading in enumerate(headings):
+            end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+            sections.append((len(heading[1]), heading[2].strip(), text[heading.end():end]))
+    hierarchy = []
+    chunk_index = 0
+    for level, title, body in sections:
+        while hierarchy and hierarchy[-1][0] >= level:
+            hierarchy.pop()
+        hierarchy.append((level, title))
+        body = clean_text(body)
+        if not body:
+            continue
+        metadata = {'source': path.name, 'type': 'md', 'page': 1,
+                    'source_locator': title, 'section': title}
+        for _, parent in reversed(hierarchy):
+            match = re.match(r'Munic[ií]pio:\s*(.*?)\s*[—–-]\s*IBGE\s*(\d{7})', parent, re.IGNORECASE)
+            if match:
+                metadata.update(entity=match[1].strip(), codigo_ibge=match[2])
+                break
+        metadata['section_path'] = ' > '.join(title for _, title in hierarchy[1:]) or title
+        labels = []
+        if metadata.get('entity'):
+            labels.append(f"Município: {metadata['entity']}. Código IBGE: {metadata['codigo_ibge']}.")
+        labels.append(f'Seção: {title}')
+        if hierarchy[0][1] != title:
+            labels.append(f'Documento: {hierarchy[0][1]}')
+        header = next((line for line in body.splitlines() if line.lstrip().startswith('|')), '')
+        if header:
+            labels.append('Colunas da tabela: ' + header)
+        size = max(80, CHUNK_SIZE)
+        prefix = '\n'.join(labels)[:size // 2] + '\n\n'
+        budget = size - len(prefix)
+        for chunk in bounded_chunks(body, budget, min(CHUNK_OVERLAP, budget // 3)):
+            yield prefix + chunk, {**metadata, 'chunk': chunk_index}
+            chunk_index += 1
 
 
 def clean_text(text: str) -> str:
@@ -490,13 +567,11 @@ def document_hint(path: Path) -> str:
     return " ".join(hints)
 
 
-def document_records(
+def _document_records(
     raw_dir: Path,
 ) -> Iterable[tuple[str, dict]]:
 
-    for path in sorted(
-        raw_dir.iterdir()
-    ):
+    for path in selected_document_paths(raw_dir):
         if not path.is_file():
             continue
 
@@ -522,13 +597,17 @@ def document_records(
                         "chunk": index,
                     }
 
-        elif suffix in {".txt", ".md"}:
+        elif suffix == ".md":
+            yield from markdown_records(path)
+
+        elif suffix == ".txt":
             text = clean_text(
                 read_text_file(path)
             )
 
             for index, chunk in enumerate(
-                split_legal_text(text)
+                [chunk for section in re.split(r"(?=^## )", text, flags=re.MULTILINE)
+                 for chunk in split_legal_text(section)]
             ):
                 final_text = chunk
 
@@ -550,6 +629,12 @@ def document_records(
                     yield text, metadata
 
 
+def document_records(raw_dir: Path) -> Iterable[tuple[str, dict]]:
+    from src.retrieval_policy import classify
+    for text, metadata in _document_records(raw_dir):
+        yield text, classify(metadata, text, metadata.get('section_path', ''))
+
+
 # =========================================================
 # ÍNDICE / MANIFESTO
 # =========================================================
@@ -560,9 +645,7 @@ def raw_manifest_hash(
 
     digest = hashlib.sha256()
 
-    for path in sorted(
-        raw_dir.iterdir()
-    ):
+    for path in selected_document_paths(raw_dir):
         if (
             not path.is_file()
             or path.suffix.lower()
@@ -623,6 +706,10 @@ def write_ready_marker(
         "index_version": INDEX_VERSION,
         "manifest": manifest,
         "count": count,
+        "embedding_model": EMBEDDING_MODEL,
+        "chunk_size": CHUNK_SIZE,
+        "chunk_overlap": CHUNK_OVERLAP,
+        "distance_metric": "cosine",
     }
 
     READY_FILE.write_text(
@@ -639,6 +726,8 @@ def create_embedding_function(
     max_retries: int = 3,
 ) -> SentenceTransformerEmbeddingFunction:
 
+    from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+
     last_error: Exception | None = None
 
     for attempt in range(
@@ -647,7 +736,7 @@ def create_embedding_function(
     ):
         try:
             return SentenceTransformerEmbeddingFunction(
-                model_name=EMBEDDING_MODEL
+                model_name=EMBEDDING_MODEL, normalize_embeddings=True
             )
 
         except Exception as error:
@@ -667,6 +756,7 @@ def create_embedding_function(
 
 
 def create_chroma_client():
+    import chromadb
     CHROMA_DIR.mkdir(
         parents=True,
         exist_ok=True,
@@ -708,6 +798,9 @@ def index_documents(
             "se os PDFs possuem texto extraível."
         ) from None
 
+    if RETRIEVAL_MODE == "lexical":
+        return 1 + sum(1 for _ in records)
+
     CHROMA_DIR.mkdir(
         parents=True,
         exist_ok=True,
@@ -725,6 +818,10 @@ def index_documents(
         == INDEX_VERSION
         and marker.get("manifest")
         == manifest
+        and marker.get("embedding_model") == EMBEDDING_MODEL
+        and marker.get("chunk_size") == CHUNK_SIZE
+        and marker.get("chunk_overlap") == CHUNK_OVERLAP
+        and marker.get("distance_metric") == "cosine"
     ):
         try:
             collection = client.get_collection(
@@ -762,7 +859,8 @@ def index_documents(
         COLLECTION_NAME,
         embedding_function=embedding,
         metadata={
-            "index_version": INDEX_VERSION
+            "index_version": INDEX_VERSION,
+            "hnsw:space": "cosine",
         },
     )
 
