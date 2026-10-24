@@ -160,7 +160,7 @@ MAX_CONTEXT_CHUNKS = int(
 # mudanças relevantes na estratégia de indexação.
 INDEX_VERSION = os.getenv(
     "INDEX_VERSION",
-    "rs-hibrida-2026-10-24-v4",
+    "rs-hibrida-2026-10-24-v5",
 )
 
 
