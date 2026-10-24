@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import time
+from itertools import chain
 from pathlib import Path
 from typing import Iterable
 
@@ -44,6 +45,10 @@ SUPPORTED_DOCUMENT_SUFFIXES = {
     ".md",
     ".csv",
 }
+
+
+class NoReadableDocumentsError(ValueError):
+    """Supported files exist, but none contains an indexable text passage."""
 
 
 def clean_text(text: str) -> str:
@@ -691,6 +696,18 @@ def index_documents(
         raw_dir
     )
 
+    # Validate the documents before downloading a model or replacing an index.
+    # A file containing only whitespace is not a usable knowledge base.
+    records = iter(document_records(raw_dir))
+    try:
+        first_record = next(records)
+    except StopIteration:
+        raise NoReadableDocumentsError(
+            "Nenhum trecho de texto foi encontrado nos documentos. "
+            "Verifique se os arquivos em raw/ contêm conteúdo e "
+            "se os PDFs possuem texto extraível."
+        ) from None
+
     CHROMA_DIR.mkdir(
         parents=True,
         exist_ok=True,
@@ -777,9 +794,7 @@ def index_documents(
         metadatas.clear()
         ids.clear()
 
-    for text, metadata in document_records(
-        raw_dir
-    ):
+    for text, metadata in chain((first_record,), records):
         locator = (
             metadata.get("row")
             or metadata.get("page")
