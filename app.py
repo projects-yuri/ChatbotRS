@@ -3115,7 +3115,7 @@ MAX_ANSWER_CHARS = 60000
 MAX_SOURCES = 12
 MAX_EXCERPT_CHARS = 6000
 MAX_API_BYTES = 2 * 1024 * 1024
-INDEX_SCHEMA_VERSION = 2
+INDEX_SCHEMA_VERSION = 4
 SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".csv", ".md"}
 DEFAULTS = {
     "language": "pt",
@@ -3361,7 +3361,7 @@ def load_secrets() -> None:
     for key in (
         "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "OPENROUTER_BASE_URL",
         "EMBEDDING_MODEL", "TOP_K", "CANDIDATE_K", "MAX_CONTEXT_CHUNKS",
-        "RS_EDU_STATE_DIR",
+        "RS_EDU_STATE_DIR", "RETRIEVAL_MODE",
     ):
         value = secrets.get(key)
         if isinstance(value, (str, int, float)) and str(value).strip():
@@ -3761,7 +3761,8 @@ def document_signature(raw_dir: Path) -> tuple:
     if not raw_dir.is_dir():
         return ()
     files = []
-    for path in sorted(raw_dir.iterdir(), key=lambda value: value.name.casefold()):
+    from src.ingestion import selected_document_paths
+    for path in selected_document_paths(raw_dir):
         try:
             if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS:
                 stat = path.stat()
@@ -3863,7 +3864,11 @@ def ensure_index(signature: tuple, raw_dir: Path, settings) -> None:
         raise ValueError("No supported documents")
     embedding = os.getenv("EMBEDDING_MODEL") or str(getattr(settings, "EMBEDDING_MODEL", ""))
     fingerprint = hashlib.sha256(json.dumps(
-        {"schema": INDEX_SCHEMA_VERSION, "documents": signature, "embedding": embedding},
+        {"schema": INDEX_SCHEMA_VERSION, "documents": signature, "embedding": embedding,
+         "retrieval_mode": getattr(settings, "RETRIEVAL_MODE", "vector"),
+         "index_version": getattr(settings, "INDEX_VERSION", ""),
+         "chunk_size": getattr(settings, "CHUNK_SIZE", 900),
+         "chunk_overlap": getattr(settings, "CHUNK_OVERLAP", 180)},
         sort_keys=True, ensure_ascii=False,
     ).encode("utf-8")).hexdigest()
     key = str(raw_dir.resolve())
@@ -3878,7 +3883,9 @@ def ensure_index(signature: tuple, raw_dir: Path, settings) -> None:
             previous = {}
         reset = not isinstance(previous, dict) or previous.get("fingerprint") != fingerprint
         from src.ingestion import index_documents
-        index_documents(reset=reset)
+        index_documents(raw_dir=raw_dir, reset=reset)
+        from src.rag import clear_rag_caches
+        clear_rag_caches()
         # Write atomically so interruption cannot leave a partial manifest.
         temporary = None
         try:
@@ -4288,7 +4295,9 @@ def main() -> None:
                     with progress.container():
                         with st.spinner(tr("thinking")):
                             from src.rag import answer
-                            response, sources = normalize_rag_result(answer(question))
+                            response, sources = normalize_rag_result(answer(
+                                question, focus=active_topic["id"] if active_topic else None
+                            ))
                             original_response = response
                             response, notice = adapt_answer(response, settings)
                     progress.empty()
