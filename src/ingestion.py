@@ -81,9 +81,47 @@ def bounded_chunks(text: str, size: int, overlap: int) -> Iterable[str]:
         start = max(start + 1, end - overlap)
 
 
+def restore_section_headings(text: str) -> str:
+    """Reconhece os títulos da base mesmo após copiar o Markdown renderizado.
+
+    Só promove linhas inteiras com rótulos conhecidos. Linhas numéricas como
+    IMERS: 2024 = ... continuam sendo dados, não títulos. A base não é alterada
+    no disco; a recuperação da estrutura acontece apenas durante a leitura.
+    """
+    municipality = re.compile(
+        r'^Munic[ií]pio:\s*.+?\s*[—–-]\s*IBGE\s*\d{7}\s*$', re.IGNORECASE)
+    section = re.compile(
+        r'^(?:Visão geral:|SAERS: finalidade|IMERS: significado|'
+        r'Panorama geral:|PRE: significado|ICMS Educacional e IPM:|'
+        r'Leis principais:|EC\s+108/2020:|Fundeb: finalidade|LDB:|'
+        r'Indicadores complementares e interpretação|Limites da base e perguntas|'
+        r'(?:Lei estadual|Decreto)(?:\s+estadual)?\s+n[ºo°]?\s*\d)',
+        re.IGNORECASE)
+    group = re.compile(
+        r'^\d+\.\s+(?:ICMS Educacional|PRE\s*[—–-]|SAERS e IMERS|Educação básica)',
+        re.IGNORECASE)
+    lines = []
+    for line in text.splitlines():
+        title = line.strip()
+        if re.match(r'^#{1,6}\s+', title):
+            lines.append(line)
+        elif municipality.fullmatch(title):
+            lines.append('### ' + title)
+        elif len(title) <= 180 and (
+                group.match(title) or title.startswith('Dados municipais compactos')):
+            lines.append('## ' + title)
+        elif len(title) <= 180 and section.match(title):
+            lines.append('### ' + title)
+        elif not lines and title.startswith('Base Unificada'):
+            lines.append('# ' + title)
+        else:
+            lines.append(line)
+    return '\n'.join(lines)
+
+
 def markdown_records(path: Path) -> Iterable[tuple[str, dict]]:
     """Keep section and municipality context on each bounded Markdown chunk."""
-    text = clean_text(read_text_file(path))
+    text = restore_section_headings(clean_text(read_text_file(path)))
     headings = list(re.finditer(r'(?m)^(#{1,6})[ \t]+([^\n]+)$', text))
     sections = []
     if not headings:
@@ -643,7 +681,8 @@ def raw_manifest_hash(
     raw_dir: Path,
 ) -> str:
 
-    digest = hashlib.sha256()
+    # Alterar a estrutura do leitor exige reindexar mesmo com os mesmos bytes.
+    digest = hashlib.sha256(b'markdown-structure-v2\0')
 
     for path in selected_document_paths(raw_dir):
         if (
