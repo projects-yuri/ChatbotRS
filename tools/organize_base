@@ -1,0 +1,69 @@
+"""Organiza a base única por assunto sem alterar as fichas numéricas."""
+import re
+from pathlib import Path
+
+DATA_MARKER = '## Dados municipais compactos — IMERS e PRE'
+GROUPS = [
+    ('1. ICMS Educacional — legislação e repartição', [
+        'Leis principais: ICMS, SAERS, IMERS e PRE',
+        'EC 108/2020: aprendizagem e equidade na repartição',
+        'Lei estadual nº 15.766/2021 — ICMS e PRE',
+        'Decreto nº 56.679/2022 — SAERS e IMERS',
+        'Decreto nº 56.723/2022 — PRE',
+        'ICMS Educacional e IPM: distribuição de recursos']),
+    ('2. PRE — rateio e relação com os indicadores', [
+        'PRE: significado e diferença em relação ao IMERS',
+        'Visão geral: avaliação, indicadores e financiamento']),
+    ('3. SAERS e IMERS — avaliação e resultados', [
+        'SAERS: finalidade e público', 'IMERS: significado, componentes e fórmula',
+        'Panorama geral: médias do IMERS entre os municípios']),
+    ('4. Educação básica — financiamento, responsabilidades e consulta', [
+        'Fundeb: finalidade e legislação geral', 'LDB: responsabilidades e organização da educação',
+        'Indicadores complementares e interpretação dos dados', 'Limites da base e perguntas adequadas']),
+]
+LEGAL_SECTIONS = {
+    'Lei estadual nº 15.766/2021 — ICMS e PRE':
+        'A Lei estadual nº 15.766, de 20/12/2021, disciplina os critérios de repartição municipal do ICMS no RS, incluindo a PRE. '
+        'É a referência estadual de repartição; não é uma nota de aprendizagem. '
+        'Fonte: Sefaz/Governo do RS: https://estado.rs.gov.br/indices-provisorios-de-participacao-dos-municipios-no-icms-para-2027-estao-disponiveis-para-consulta',
+    'Decreto nº 56.679/2022 — SAERS e IMERS':
+        'O Decreto estadual nº 56.679, de 05/10/2022, institui o SAERS e disciplina a apuração do IMERS. '
+        'Trata da avaliação e do índice educacional da rede municipal, que se relacionam ao critério educacional do ICMS. '
+        'Fonte: texto disponibilizado pelo DEE: https://www.dee.rs.gov.br/upload/arquivos/202309/08114056-decreto-imers-1.pdf',
+    'Decreto nº 56.723/2022 — PRE':
+        'O Decreto estadual nº 56.723, de 01/11/2022, regulamenta a PRE, Participação no Rateio da Cota-Parte da Educação. '
+        'A PRE relaciona IMERS e porte municipal no critério educacional do ICMS; não é o IPM total. '
+        'Fonte: Diário Oficial disponibilizado pela PGE: https://www.pge.rs.gov.br/upload/arquivos/202211/03080131-doe-2022-11-03.pdf',
+}
+
+
+def organize(path):
+    text = path.read_text(encoding='utf-8')
+    prefix, data = text.split(DATA_MARKER, 1)
+    headings = list(re.finditer(r'(?m)^#{2,3} (.+)$', prefix))
+    intro = prefix[:headings[0].start()]
+    sections = {}
+    for i, heading in enumerate(headings):
+        body = prefix[heading.end():headings[i+1].start() if i+1 < len(headings) else len(prefix)].strip()
+        if body:
+            sections[heading[1]] = body
+    sections.update({title: body for title, body in LEGAL_SECTIONS.items() if title not in sections})
+    expected = {title for _, titles in GROUPS for title in titles}
+    if set(sections) != expected:
+        raise ValueError(f'Seções inesperadas ou ausentes: {set(sections) ^ expected}')
+    blocks = [intro.rstrip() + '\n\n',
+              'Organização: legislação e ICMS → rateio/PRE → avaliação/IMERS → educação básica → dados municipais.\n\n']
+    # Evita duplicar o índice textual em reexecuções.
+    blocks[0] = re.sub(r'\nOrganização:.*\n?', '\n', blocks[0]).rstrip() + '\n\n'
+    for group, titles in GROUPS:
+        blocks.append(f'## {group}\n\n')
+        for title in titles:
+            blocks.append(f'### {title}\n\n{sections[title]}\n\n')
+    # A posição e os corpos das fichas são preservados; só muda o nível do título.
+    data = re.sub(r'(?m)^## Município:', '### Município:', data)
+    blocks.append(DATA_MARKER + data)
+    path.write_text(''.join(blocks), encoding='utf-8')
+
+
+if __name__ == '__main__':
+    organize(Path(__file__).resolve().parents[1] / 'raw/Base_Unificada_Educacao_RS.md')
