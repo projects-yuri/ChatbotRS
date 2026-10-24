@@ -1,0 +1,115 @@
+"""Startup regressions without a model download or a real vector database."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+import tempfile
+import types
+import unittest
+from pathlib import Path
+from unittest.mock import Mock, patch
+
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+
+def load_ingestion():
+    # Model loading and Chroma are integration boundaries, not needed to
+    # exercise the real readers, chunker, preflight and indexing control flow.
+    chroma = types.ModuleType('chromadb')
+    utils = types.ModuleType('chromadb.utils')
+    embedding = types.ModuleType('chromadb.utils.embedding_functions')
+    embedding.SentenceTransformerEmbeddingFunction = Mock
+    dotenv = types.ModuleType('dotenv')
+    dotenv.load_dotenv = Mock()
+    with patch.dict(sys.modules, {
+        'chromadb': chroma,
+        'chromadb.utils': utils,
+        'chromadb.utils.embedding_functions': embedding,
+        'dotenv': dotenv,
+    }):
+        spec = importlib.util.spec_from_file_location('ingestion_startup_test', ROOT / 'src/ingestion.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    return module
+
+
+ingestion = load_ingestion()
+
+
+class MemoryCollection:
+    def __init__(self):
+        self.documents = []
+        self.ids = []
+
+    def upsert(self, *, documents, metadatas, ids):
+        self.documents.extend(documents)
+        self.ids.extend(ids)
+
+
+class StartupTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.raw = self.root / 'raw'
+        self.raw.mkdir()
+        self.chroma = self.root / 'chroma'
+        self.marker = self.chroma / '.pi5_index_ready.json'
+        self.settings_patch = patch.multiple(ingestion, CHROMA_DIR=self.chroma, READY_FILE=self.marker)
+        self.settings_patch.start()
+        self.addCleanup(self.settings_patch.stop)
+
+    def test_blank_markdown_stops_before_model_or_database_and_keeps_existing_index(self):
+        (self.raw / 'Base_Unificada_Educacao_RS.md').write_bytes(b'\r\n')
+        self.chroma.mkdir()
+        old_marker = b'{"previous_index": true}'
+        self.marker.write_bytes(old_marker)
+        with patch.object(ingestion, 'create_chroma_client') as client, \
+             patch.object(ingestion, 'create_embedding_function') as embedding:
+            with self.assertRaises(ingestion.NoReadableDocumentsError):
+                ingestion.index_documents(raw_dir=self.raw, reset=True)
+            client.assert_not_called()
+            embedding.assert_not_called()
+        self.assertEqual(self.marker.read_bytes(), old_marker)
+
+    def test_full_corpus_restores_content_instead_of_blank_placeholder(self):
+        path = ROOT / 'raw/Base_Unificada_Educacao_RS.md'
+        text = path.read_text(encoding='utf-8')
+        self.assertGreater(path.stat().st_size, 1_000_000)
+        self.assertEqual(text.count('### Município:'), 497)
+        self.assertIn('### Município: Porto Alegre — IBGE 4314902', text)
+        self.assertIn('### Município: Nova Roma do Sul — IBGE 4313359', text)
+        self.assertNotRegex(text, r'\bVAAR\b')
+        first = next(ingestion.document_records(path.parent), None)
+        self.assertIsNotNone(first)
+        self.assertEqual(first[1]['type'], 'md')
+
+    def test_preflight_does_not_consume_first_passage_or_duplicate_batches(self):
+        (self.raw / 'educacao.md').write_text(
+            '# Educação no RS\n\n'
+            + 'O SAERS avalia a aprendizagem da rede pública. ' * 35
+            + '\n\nO IMERS compõe a PRE, que participa do IPM municipal. ' * 25,
+            encoding='utf-8',
+        )
+        expected = [text for text, _ in ingestion.document_records(self.raw)]
+        self.assertGreater(len(expected), 2)
+        collection = MemoryCollection()
+        client = Mock()
+        client.get_or_create_collection.return_value = collection
+        with patch.object(ingestion, 'create_chroma_client', return_value=client), \
+             patch.object(ingestion, 'create_embedding_function', return_value=object()):
+            count = ingestion.index_documents(raw_dir=self.raw, reset=True, batch_size=2)
+        self.assertEqual(collection.documents, expected)
+        self.assertEqual(count, len(expected))
+        self.assertEqual(len(collection.ids), len(set(collection.ids)))
+        marker = json.loads(self.marker.read_text())
+        self.assertEqual(marker['count'], len(expected))
+        self.assertEqual(marker['manifest'], ingestion.raw_manifest_hash(self.raw))
+
+
+if __name__ == '__main__':
+    unittest.main()
