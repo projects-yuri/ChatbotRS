@@ -1,0 +1,59 @@
+"""Verificações do carregamento leve e da recuperação dos assuntos essenciais."""
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from src import ingestion, lightweight, rag
+from src.settings import RAW_DIR
+
+
+class EssentialTests(unittest.TestCase):
+    def test_startup_without_neural_dependencies(self):
+        with patch.object(ingestion, 'RETRIEVAL_MODE', 'lexical'), patch.object(ingestion, 'create_embedding_function', side_effect=AssertionError('model loaded')), patch.object(ingestion, 'create_chroma_client', side_effect=AssertionError('database opened')):
+            self.assertGreater(ingestion.index_documents(), 0)
+        self.assertNotIn('chromadb', sys.modules)
+        self.assertNotIn('sentence_transformers', sys.modules)
+
+    def test_blank_base_has_specific_error(self):
+        with tempfile.TemporaryDirectory() as folder:
+            Path(folder, 'empty.md').write_text(' \n')
+            with self.assertRaises(ingestion.NoReadableDocumentsError):
+                ingestion.index_documents(raw_dir=Path(folder))
+
+    def test_core_questions_retrieve_the_answer(self):
+        for question, expected in [
+            ('Qual a fórmula do IMERS?', '0,40 × IQA'),
+            ('Qual a diferença entre PRE e IMERS?', 'porte também influencia'),
+            ('Quais são as leis principais do ICMS Educacional?', '15.766'),
+            ('Qual a média do IMERS em 2025?', '66,97'),
+            ('O que é o SAERS?', '56.679'),
+            ('O que é Fundeb?', '14.113'),
+            ('Quais responsabilidades a LDB dá aos municípios?', 'art. 11'),
+        ]:
+            with self.subTest(question=question):
+                hits = rag.retrieve(question)
+                self.assertTrue(hits)
+                self.assertLessEqual(len(hits), 5)
+                self.assertIn(expected, '\n'.join(h['text'] for h in hits))
+
+    def test_unknown_topic_does_not_match(self):
+        self.assertEqual(rag.retrieve('astronomia exoplanetas galaxias'), [])
+
+    def test_new_document_invalidates_cache(self):
+        with tempfile.TemporaryDirectory() as folder:
+            raw = Path(folder)
+            path = raw / 'test.md'
+            path.write_text('## Assunto\n\nTexto sobre financiamento escolar e pesquisa educacional municipal.')
+            with patch.object(lightweight, 'RAW_DIR', raw):
+                lightweight._corpus.cache_clear()
+                self.assertTrue(lightweight.retrieve_lexical('financiamento'))
+                path.write_text('## Astronomia\n\nObservações de exoplanetas distantes usando telescópios espaciais.')
+                self.assertEqual(lightweight.retrieve_lexical('financiamento'), [])
+        lightweight._corpus.cache_clear()
+
+
+if __name__ == '__main__':
+    unittest.main()
+  
