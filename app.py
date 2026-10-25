@@ -3131,6 +3131,8 @@ DEFAULTS = {
 
 COPY = {
     "pt": {
+        "chat_tab": "Chatbot",
+        "project_tab": "Detalhamento do Projeto",
         "page_title": "RS Edu · Converse e descubra",
         "space": "Seu espaço",
         "language": "Idioma / Language",
@@ -3196,6 +3198,8 @@ COPY = {
         "document_summary": "Resuma os principais pontos do documento “{name}”.",
     },
     "en": {
+        "chat_tab": "Chatbot",
+        "project_tab": "Project details",
         "page_title": "RS Edu · Ask and discover",
         "space": "Your space",
         "language": "Idioma / Language",
@@ -3362,6 +3366,8 @@ def load_secrets() -> None:
         "OPENROUTER_API_KEY", "OPENROUTER_MODEL", "OPENROUTER_BASE_URL",
         "EMBEDDING_MODEL", "TOP_K", "CANDIDATE_K", "MAX_CONTEXT_CHUNKS",
         "RS_EDU_STATE_DIR", "RETRIEVAL_MODE",
+        "CHUNK_SIZE", "CHUNK_OVERLAP", "INDEX_BATCH_SIZE", "INDEX_VERSION",
+        "CHROMA_DIR", "COLLECTION_NAME",
     ):
         value = secrets.get(key)
         if isinstance(value, (str, int, float)) and str(value).strip():
@@ -3719,6 +3725,10 @@ def apply_style() -> None:
     [data-testid="stChatInput"] textarea { background: transparent; color: var(--rs-text); font-size: __FONT__px; }
     [data-testid="stChatInput"]:focus-within { border-color: var(--rs-accent-text); }
     [data-testid="stChatInputSubmitButton"] { color: var(--rs-accent-text); background: var(--rs-soft); }
+    .stTabs [data-baseweb="tab-list"] { gap: 18px; border-bottom: 1px solid var(--rs-border); }
+    .stTabs [data-baseweb="tab"] { color: var(--rs-muted); }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] { color: var(--rs-accent-text); }
+    .stTabs [data-baseweb="tab-highlight"] { background-color: var(--rs-accent-text); }
     .stApp [data-testid="stAlert"] { border-radius: 15px; background: var(--rs-soft); color: var(--rs-text); }
     .stApp hr { border-color: var(--rs-border); }
     .stApp table { color: var(--rs-text); }
@@ -4219,16 +4229,191 @@ def render_history() -> None:
                     render_sources(message.get("sources", []))
 
 
-def main() -> None:
-    st.set_page_config(
-        page_title="RS Edu", page_icon=BytesIO(base64.b64decode(BRAND_LOGO_BASE64)),
-        layout="wide", initial_sidebar_state="expanded",
-    )
-    load_secrets()
-    init_session()
-    render_sidebar()
-    apply_style()
+PROJECT_REPOSITORY = "https://github.com/projects-yuri/ChatbotRS"
 
+# Descrições locais: esta página não depende de uma consulta à LLM ou ao GitHub.
+PROJECT_FILES = [
+    ("app.py", "interface", "Monta a interface, mantém o histórico, prepara a base e apresenta respostas, fontes e esta documentação.", "Builds the interface, keeps conversation history, prepares the corpus and displays answers, sources and this documentation."),
+    ("src/__init__.py", "core", "Identifica src como pacote Python para permitir as importações entre módulos.", "Identifies src as a Python package so its modules can import each other."),
+    ("src/settings.py", "core", "Centraliza diretórios, modelo de embeddings, modo de busca, tamanhos de trechos e limites do contexto. Lê o .env local.", "Centralizes directories, embedding model, retrieval mode, chunk sizes and context limits. Loads the local .env file."),
+    ("src/ingestion.py", "core", "Lê PDF, TXT, MD e CSV; limpa e divide o texto; identifica seções e municípios; prepara embeddings e o índice Chroma quando necessário. Reconhece títulos municipais mesmo sem #.", "Reads PDF, TXT, MD and CSV; cleans and chunks text; identifies sections and municipalities; prepares embeddings and the Chroma index when needed. Recognizes municipal headings even without # markers."),
+    ("src/lightweight.py", "core", "Executa a busca por palavras com BM25, normaliza termos e reconhece nomes completos e códigos IBGE dos municípios.", "Runs BM25 keyword retrieval, normalizes terms and recognizes complete municipality names and IBGE codes."),
+    ("src/retrieval_policy.py", "core", "Classifica temas e tipos de conteúdo. Converte a pergunta e o foco selecionado em filtros de legislação, assunto e município.", "Classifies topics and content types. Converts the question and selected topic into legislation, subject and municipality filters."),
+    ("src/search.py", "core", "Combina candidatos do BM25 e do Chroma por posição (RRF), aplica filtros, remove duplicações e reserva trechos para as cidades comparadas.", "Combines BM25 and Chroma candidates by rank (RRF), applies filters, removes duplicates and reserves passages for the municipalities being compared."),
+    ("src/rag.py", "core", "Coordena a recuperação, monta o contexto e chama a LLM pela API do OpenRouter com ChatOpenAI. Retorna a resposta e os trechos usados.", "Coordinates retrieval, builds the context and calls the LLM through the OpenRouter API with ChatOpenAI. Returns the answer and supporting passages."),
+    ("src/municipalities_rs.json", "data", "Catálogo dos nomes e códigos IBGE dos 497 municípios. Serve para identificar cidades; os indicadores numéricos ficam na base em raw/.", "Registry of names and IBGE codes for 497 municipalities. Identifies cities; numerical indicators are stored in the raw/ corpus."),
+    ("raw/*", "data", "Fonte documental do chatbot. A base unificada reúne conceitos, legislação e o recorte de IMERS 2024/2025, variação, componentes e PRE 2025.", "Documentary source for the chatbot. The unified corpus includes concepts, legislation and selected IMERS 2024/2025 values, changes, components and PRE 2025."),
+    ("requirements.txt", "setup", "Arquivo de dependências lido pelo Streamlit Cloud e pelo pip. Deve instalar os pacotes correspondentes ao modo de busca escolhido.", "Dependency file read by Streamlit Cloud and pip. Must install packages for the selected retrieval mode."),
+    ("requirements-core.txt", "setup", "Dependências comuns da interface, leitura de documentos e integração com a LLM. Permite executar o modo lexical sem Chroma e Torch.", "Shared interface, document-reading and LLM integration dependencies. Supports lexical mode without Chroma and Torch."),
+    ("requirements-vector.txt", "setup", "Acrescenta Chroma, sentence-transformers e Torch às dependências comuns para habilitar a busca híbrida com embeddings.", "Adds Chroma, sentence-transformers and Torch to the shared dependencies to enable hybrid embedding retrieval."),
+    (".env.example", "setup", "Modelo das variáveis de ambiente para configuração local. A chave real deve ser configurada fora do código versionado.", "Environment-variable template for local configuration. The real API key belongs outside version-controlled code."),
+    (".gitignore", "setup", "Define arquivos locais que o Git deve ignorar, como configurações privadas e arquivos gerados.", "Defines local files Git should ignore, such as private configuration and generated files."),
+    (".devcontainer/devcontainer.json", "setup", "Descreve o ambiente de desenvolvimento em contêiner usado por ferramentas compatíveis.", "Describes the development container environment used by compatible tools."),
+    ("README.md", "docs", "Apresentação e instruções gerais do repositório. Para os parâmetros realmente carregados nesta execução, consulte Configuração nesta aba.", "Repository overview and general instructions. For parameters actually loaded in this session, see Configuration in this tab."),
+    ("APLICAR_CORRECAO.md", "docs", "Orientações do pacote para aplicar atualizações e conhecer a validação realizada.", "Package instructions for applying updates and understanding completed validation."),
+    ("tests/test_essential*", "tests", "Testa os assuntos centrais, a busca lexical, documentos vazios e a atualização do cache.", "Tests core topics, lexical retrieval, empty documents and cache invalidation."),
+    ("tests/test_municipal_retrieval*", "tests", "Verifica nomes completos, códigos IBGE, comparações municipais, tamanho dos trechos e cópias numeradas da base.", "Checks full names, IBGE codes, municipality comparisons, chunk bounds and numbered corpus copies."),
+    ("tests/test_hybrid_retrieval*", "tests", "Testa o foco da interface, os filtros e a fusão BM25/vetores. Os retornos do Chroma são simulados nesses testes.", "Tests the interface topic, filters and BM25/vector fusion. Chroma results are simulated in these tests."),
+    ("tests/test_flat_markdown*", "tests", "Reproduz a perda de marcadores Markdown e verifica a recuperação de legislação e municípios.", "Reproduces missing Markdown markers and verifies legislation and municipality retrieval."),
+    ("tests/test_project_details*", "tests", "Verifica a aba de detalhamento, os filtros de arquivos, a configuração e a proteção da chave da API.", "Checks the project-details tab, file filters, configuration and API-key protection."),
+    ("tests/test_ingestion_setup*", "tests", "Testes legados da inicialização e dos lotes de indexação. Incluem uma expectativa de base extensa que precisa ser revisada para o recorte compacto.", "Legacy startup and indexing-batch tests. Include a large-corpus expectation that needs review for the compact dataset."),
+    ("tools/integrate_compact_data*", "tools", "Seleciona campos do CSV oficial do IMERSVis e atualiza os resumos municipais no Markdown. É uma ferramenta de manutenção, não de resposta ao chat.", "Selects fields from the official IMERSVis CSV and updates municipal Markdown summaries. A maintenance tool, not part of chat answering."),
+    ("tools/organize_base*", "tools", "Reorganiza a base em blocos de legislação, rateio, avaliação e dados municipais.", "Organizes the corpus into legislation, allocation, assessment and municipality sections."),
+    ("src.zip", "docs", "Arquivo compactado de código mantido no repositório. A aplicação importa os arquivos da pasta src/ diretamente.", "Code archive kept in the repository. The app imports files directly from the src/ directory."),
+]
+
+
+def project_file_catalog(root: Path = PROJECT_DIR, language: str = "pt") -> list[dict]:
+    """Lista apenas os arquivos conhecidos da documentação, sem abrir arquivos privados."""
+    groups = {
+        "interface": ("Interface", "Interface"), "core": ("Núcleo do chatbot", "Chatbot core"),
+        "data": ("Dados e documentos", "Data and documents"), "setup": ("Ambiente", "Environment"),
+        "docs": ("Documentação", "Documentation"), "tests": ("Testes", "Tests"),
+        "tools": ("Manutenção", "Maintenance"),
+    }
+    index = 1 if language == "en" else 0
+    rows, seen = [], set()
+    for pattern, category, pt, en in PROJECT_FILES:
+        for path in sorted(root.glob(pattern)):
+            if not path.is_file() or path.name.endswith((".pyc", ".pyo")):
+                continue
+            relative = path.relative_to(root).as_posix()
+            if relative in seen:
+                continue
+            seen.add(relative)
+            rows.append({"path": relative, "group": groups[category][index],
+                         "purpose": en if index else pt,
+                         "url": PROJECT_REPOSITORY + "/blob/main/" + urllib.parse.quote(relative, safe="/")})
+    return rows
+
+
+def project_configuration(settings=None, environ=None, language: str = "pt") -> list[dict]:
+    """Somente parâmetros permitidos; a chave da API nunca integra os valores da tabela."""
+    env = os.environ if environ is None else environ
+    en = language == "en"
+    parameters = [
+        ("RETRIEVAL_MODE", "hybrid", "hybrid/vector combinam Chroma e BM25; lexical usa somente palavras.", "hybrid/vector combine Chroma and BM25; lexical uses keywords only."),
+        ("EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", "Modelo que transforma textos em vetores; não é a LLM que escreve a resposta.", "Model that turns text into vectors; not the LLM that writes the answer."),
+        ("CHUNK_SIZE", 900, "Limite de caracteres por trecho; o cabeçalho também ocupa esse espaço.", "Character limit per passage, including its heading."),
+        ("CHUNK_OVERLAP", 180, "Sobreposição máxima entre trechos, ajustada ao espaço disponível.", "Maximum overlap between passages, adjusted to available space."),
+        ("TOP_K", 5, "Quantidade desejada de trechos finais.", "Desired number of final passages."),
+        ("CANDIDATE_K", 12, "Piso de candidatos; a busca usa pelo menos seis vezes o limite de contexto.", "Candidate floor; retrieval uses at least six times the context limit."),
+        ("MAX_CONTEXT_CHUNKS", 5, "Teto de trechos enviados à LLM; limita TOP_K.", "Maximum passages sent to the LLM; caps TOP_K."),
+        ("INDEX_BATCH_SIZE", 48, "Quantidade de trechos enviados ao índice por lote.", "Number of passages written to the index per batch."),
+        ("COLLECTION_NAME", "pi5_documentos", "Nome da coleção de documentos no Chroma.", "Name of the Chroma document collection."),
+        ("INDEX_VERSION", "não carregada", "Versão usada para invalidar e reconstruir o índice.", "Version used to invalidate and rebuild the index."),
+    ]
+    rows = []
+    for name, default, pt, english in parameters:
+        value = getattr(settings, name, default) if settings is not None else default
+        rows.append({"parameter": name, "value": str(value), "purpose": english if en else pt})
+    rows.append({"parameter": "OPENROUTER_MODEL", "value": env.get("OPENROUTER_MODEL") or "z-ai/glm-5.2:free",
+                 "purpose": "LLM used to generate answers through OpenRouter." if en else "LLM usada para gerar respostas pelo OpenRouter."})
+    rows.append({"parameter": "OPENROUTER_API_KEY", "value":
+                 (("Configured" if en else "Configurada") if env.get("OPENROUTER_API_KEY") else ("Not configured" if en else "Não configurada")),
+                 "purpose": "Only configuration status is shown." if en else "Exibe somente o estado da configuração."})
+    return rows
+
+
+def render_project_details() -> None:
+    language = st.session_state.preferences["language"]
+    def t(pt, en):
+        return en if language == "en" else pt
+
+    st.header(tr("project_tab"))
+    st.markdown(t("Como o código organiza a base, encontra informações e transforma os trechos em respostas com fontes.",
+                  "How the code organizes the corpus, retrieves information and turns passages into answers with sources."))
+    st.markdown(f"[GitHub · projects-yuri/ChatbotRS]({PROJECT_REPOSITORY})")
+    overview, files, configuration = st.tabs([
+        t("Como funciona", "How it works"), t("Arquivos do projeto", "Project files"),
+        t("Configuração", "Configuration")])
+
+    with overview:
+        st.subheader(t("Do documento à resposta", "From document to answer"))
+        st.markdown(t(
+            "1. **Base documental:** os arquivos de `raw/` fornecem os conceitos, normas e indicadores.\n"
+            "2. **Preparação:** `ingestion.py` separa seções, identifica municípios e cria trechos com metadados. No modo híbrido, também gera embeddings e prepara o Chroma.\n"
+            "3. **Entendimento da pergunta:** `retrieval_policy.py` identifica tema, foco, legislação e cidades citadas.\n"
+            "4. **Busca:** `lightweight.py` encontra palavras e `search.py` combina os resultados com a similaridade vetorial. Os filtros preservam as cidades solicitadas.\n"
+            "5. **Resposta:** `rag.py` envia a pergunta e os trechos selecionados à LLM pelo OpenRouter. `app.py` mostra a resposta e as fontes.",
+            "1. **Document corpus:** files in `raw/` supply concepts, legislation and indicators.\n"
+            "2. **Preparation:** `ingestion.py` separates sections, identifies municipalities and creates passages with metadata. Hybrid mode also generates embeddings and prepares Chroma.\n"
+            "3. **Question interpretation:** `retrieval_policy.py` identifies topics, selected focus, legislation and named cities.\n"
+            "4. **Retrieval:** `lightweight.py` matches keywords and `search.py` combines results with vector similarity. Filters preserve requested cities.\n"
+            "5. **Answer:** `rag.py` sends the question and selected passages to the LLM through OpenRouter. `app.py` displays the answer and sources."))
+        left, right = st.columns(2)
+        with left:
+            st.subheader(t("Papéis diferentes", "Different roles"))
+            st.markdown(t("**Embeddings** representam o significado do texto em números. **BM25** encontra termos, siglas, nomes e números exatos. **Chroma** armazena e consulta vetores. **A LLM** redige a resposta com o contexto recuperado.",
+                          "**Embeddings** represent text meaning numerically. **BM25** finds exact terms, acronyms, names and numbers. **Chroma** stores and searches vectors. **The LLM** writes the answer using retrieved context."))
+        with right:
+            st.subheader(t("O que a base cobre", "Corpus coverage"))
+            st.markdown(t("Conceitos e normas de educação do RS, IMERS de 2024/2025, variação, componentes e PRE de 2025 dos 497 municípios. A PRE é uma participação percentual; os dados não incluem repasses municipais em reais.",
+                          "RS education concepts and legislation, IMERS 2024/2025, changes, components and PRE 2025 for 497 municipalities. PRE is a percentage share; municipal transfers in currency are not included."))
+        st.caption(t("O RAG consulta documentos; adicionar uma base não treina novamente a LLM. A qualidade da resposta depende dos dados, da recuperação e do modelo.",
+                     "RAG queries documents; adding a corpus does not retrain the LLM. Answer quality depends on data, retrieval and the model."))
+
+    with files:
+        catalog = project_file_catalog(language=language)
+        labels = [t("Todos", "All")] + list(dict.fromkeys(row["group"] for row in catalog))
+        selected = st.selectbox(t("Área do projeto", "Project area"), labels, key="project_file_area")
+        query = st.text_input(t("Encontrar um arquivo ou função", "Find a file or role"), key="project_file_query")
+        visible = [row for row in catalog if (selected == labels[0] or row["group"] == selected)
+                   and normalized(query) in normalized(row["path"] + " " + row["purpose"])]
+        if not visible:
+            st.info(t("Nenhum arquivo corresponde a esse filtro.", "No files match this filter."))
+        for row in visible:
+            with st.expander(row["path"]):
+                st.caption(row["group"])
+                st.markdown(row["purpose"])
+                st.markdown(f"[{t('Ver arquivo no GitHub', 'View file on GitHub')}]({row['url']})")
+        st.caption(t("Os nomes acima refletem os arquivos disponíveis nesta instalação. Para a descoberta automática de testes, use nomes test_*.py; scripts Python também precisam da extensão .py.",
+                     "Names reflect files available in this installation. Automatic test discovery requires test_*.py names; Python scripts also need the .py extension."))
+
+    with configuration:
+        try:
+            settings = importlib.import_module("src.settings")
+        except Exception:
+            settings = None
+        st.subheader(t("Parâmetros em uso", "Active parameters"))
+        st.caption(t("Valores carregados por esta execução. Reinicie o aplicativo depois de alterar as configurações.",
+                     "Values loaded by this running instance. Restart the application after changing configuration."))
+        if settings is None:
+            st.info(t("Não foi possível carregar src/settings.py; os valores padrão estão indicados abaixo.",
+                      "Could not load src/settings.py; default values are shown below."))
+        rows = project_configuration(settings, language=language)
+        st.dataframe([{t("Parâmetro", "Parameter"): row["parameter"], t("Valor", "Value"): row["value"],
+                       t("Função", "Purpose"): row["purpose"]} for row in rows],
+                     hide_index=True, use_container_width=True)
+        if settings is not None:
+            final_limit = min(settings.TOP_K, settings.MAX_CONTEXT_CHUNKS)
+            candidates = max(settings.CANDIDATE_K, final_limit * 6)
+            st.caption(t(f"Com estes parâmetros: até {final_limit} trechos finais e piso de {candidates} candidatos antes da seleção.",
+                         f"With these parameters: up to {final_limit} final passages and a floor of {candidates} candidates before selection."))
+        st.subheader(t("Onde configurar", "Where to configure"))
+        st.markdown(t("No **Streamlit Cloud**, use **Settings → Secrets**. Localmente, use um arquivo **.env** na raiz. O ambiente já definido tem prioridade sobre os valores desses arquivos. A chave da API nunca é exibida nesta página.",
+                      "On **Streamlit Cloud**, use **Settings → Secrets**. Locally, use a **.env** file in the project root. Existing environment variables take precedence over these files. The API key is never displayed on this page."))
+        with st.expander(t("Exemplo de configuração — valores ilustrativos", "Configuration example — illustrative values")):
+            st.code('OPENROUTER_API_KEY = "SUA_CHAVE_AQUI"\n'
+                    'OPENROUTER_MODEL = "z-ai/glm-5.2:free"\n'
+                    'RETRIEVAL_MODE = "hybrid"\n'
+                    'EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"\n'
+                    'CHUNK_SIZE = 900\nCHUNK_OVERLAP = 180\nTOP_K = 5\n'
+                    'CANDIDATE_K = 12\nMAX_CONTEXT_CHUNKS = 5\nINDEX_BATCH_SIZE = 48', language="toml")
+        with st.expander(t("Configuração da geração da resposta", "Answer generation settings")):
+            st.markdown(t("Em src/rag.py, a chamada principal usa temperature=0, max_tokens=700, timeout=60 segundos e max_retries=1. Esses argumentos são definidos no código da chamada ChatOpenAI. OPENROUTER_BASE_URL permite configurar o endereço da API; o padrão é https://openrouter.ai/api/v1.",
+                          "In src/rag.py, the main call uses temperature=0, max_tokens=700, a 60-second timeout and max_retries=1. These arguments are defined in the ChatOpenAI call. OPENROUTER_BASE_URL configures the API address; the default is https://openrouter.ai/api/v1."))
+        with st.expander(t("Executar localmente e atualizar a base", "Run locally and update the corpus")):
+            st.code("pip install -r requirements.txt\nstreamlit run app.py", language="bash")
+            st.markdown(t("O aplicativo prepara o índice ao iniciar e o reconstrói quando detecta mudanças na base ou na versão do leitor. Coloque documentos em raw/. Para uma reconstrução manual, execute:",
+                          "The app prepares the index on startup and rebuilds it when corpus or reader-version changes are detected. Place documents in raw/. For a manual rebuild, run:"))
+            st.code("python -m src.ingestion --reset", language="bash")
+            st.markdown(t("CHROMA_DIR define o diretório do índice; o padrão é uma pasta temporária gravável. RS_EDU_STATE_DIR define onde o app guarda o controle de preparação. O modo hybrid exige as dependências de requirements-vector.txt; lexical funciona com requirements-core.txt.",
+                          "CHROMA_DIR sets the index directory; the default is a writable temporary folder. RS_EDU_STATE_DIR sets where the app keeps preparation state. Hybrid mode requires requirements-vector.txt dependencies; lexical mode works with requirements-core.txt."))
+
+
+
+def render_chat_page() -> None:
     topics, signature, settings, ready = [], (), None, False
     preparation_error = False
     preparation_message = "unavailable"
@@ -4317,6 +4502,23 @@ def main() -> None:
         st.session_state.messages.append(message)
         st.session_state.messages = normalize_messages(st.session_state.messages)
         st.rerun()
+
+
+def main() -> None:
+    st.set_page_config(
+        page_title="RS Edu", page_icon=BytesIO(base64.b64decode(BRAND_LOGO_BASE64)),
+        layout="wide", initial_sidebar_state="expanded",
+    )
+    load_secrets()
+    init_session()
+    render_sidebar()
+    apply_style()
+    chat_tab, project_tab = st.tabs([tr("chat_tab"), tr("project_tab")])
+    # A documentação é montada sem consultar o índice ou chamar a LLM.
+    with project_tab:
+        render_project_details()
+    with chat_tab:
+        render_chat_page()
 
 
 if __name__ == "__main__":
